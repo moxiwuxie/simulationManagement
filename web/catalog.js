@@ -449,8 +449,8 @@ Object.values(SHOP_GOODS).forEach(assignGoodTiers);
 
 /* 铺面规格：决定容量、租金与员工上限 */
 const SHOP_SIZES = [
-  { id: "stall", name: "摆摊", icon: "🧺", rentMult: 0, capMult: 0.35, staffCap: 1, trafficMult: 0.75, desc: "推车地摊，免租金，货量小，客流也最少，最多 1 名帮手" },
-  { id: "small", name: "小门面", icon: "🏪", rentMult: 1, capMult: 1, staffCap: 2, trafficMult: 1, desc: "标准小铺，起步首选" },
-  { id: "large", name: "大门店", icon: "🏬", rentMult: 2.2, capMult: 2.2, staffCap: 4, trafficMult: 1.2, desc: "宽敞大店，容量翻倍，客流 +20%，能请更多人" },
-  { id: "floor", name: "一整层", icon: "🏢", rentMult: 5, capMult: 5, staffCap: 8, trafficMult: 1.4, desc: "整层物业，容量巨大，客流 +40%，适合做总部" },
+  { id: "stall", name: "摆摊", icon: "🧺", rentMult: 0, capMult: 0.35, staffCap: 1, trafficMult: 0.75, slots: 12, desc: "推车地摊，免租金，12 个商品格位，最多 1 名帮手" },
+  { id: "small", name: "小门面", icon: "🏪", rentMult: 1, capMult: 1, staffCap: 2, trafficMult: 1, slots: 26, desc: "标准小铺，26 个商品格位" },
+  { id: "large", name: "大门店", icon: "🏬", rentMult: 2.2, capMult: 2.2, staffCap: 4, trafficMult: 1.2, slots: 40, desc: "宽敞大店，40 个商品格位，客流 +20%" },
+  { id: "floor", name: "一整层", icon: "🏢", rentMult: 5, capMult: 5, staffCap: 8, trafficMult: 1.4, slots: 54, desc: "整层物业，54 个商品格位，客流 +40%" },
 ];

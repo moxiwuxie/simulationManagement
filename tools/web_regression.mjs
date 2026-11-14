@@ -880,38 +880,35 @@ async function main() {
       state.size = "small";
       state.inventory[catGoods[0].id] = [{ qty: 2, cost: 100, dayIn: state.day, shelf: 3 }];
       state.inventory[catGoods[1].id] = [{ qty: 2, cost: 100, dayIn: state.day, shelf: 3 }];
-      state.shelfOrder = { [ownedGoods.cat]: [catGoods[1].id, catGoods[0].id] };
-      const orderedDisplay = displayOrderOf(ownedGoods.cat);
-      const frontFactor = shelfPositionFactor(catGoods[1]);
-      const backFactor = shelfPositionFactor(catGoods[0]);
-      state.backView = "display";
-      renderBackstage();
-      checks.displayOrder = {
-        first: orderedDisplay[0].id === catGoods[1].id,
-        frontFactor,
-        backFactor,
-        effect: frontFactor > backFactor,
-        rows: els.displayPanel.querySelectorAll(".display-row").length,
-        hasHint: els.displayPanel.textContent.includes("越靠前越好卖"),
-      };
-      state.shelfOrder = {};
 
-      /* 22.5 摆摊格位：默认 6 格全空，点击格位打开右侧抽屉，只有摆放的商品参与销售 */
-      const stallKeep = {
+      /* 22.4 格位规格：摆摊 12 / 小门面 26 / 大门店 40 / 一整层 54，按 12 个一页展示 */
+      checks.slotSpec = {
+        sizes: SHOP_SIZES.map((size) => ({ id: size.id, slots: size.slots })),
+        ascending: SHOP_SIZES.every((size, index) => index === 0 || size.slots > SHOP_SIZES[index - 1].slots),
+        stall: (() => { state.size = "stall"; return slotsOf(); })(),
+        small: (() => { state.size = "small"; return slotsOf(); })(),
+        large: (() => { state.size = "large"; return slotsOf(); })(),
+        floor: (() => { state.size = "floor"; return slotsOf(); })(),
+        smallPages: (() => { state.size = "small"; return slotPageCount(); })(),
+      };
+      state.size = "small";
+
+      /* 22.5 格位：默认全空，点击格位打开右侧抽屉，只有摆放的商品参与销售 */
+      const slotKeep = {
         size: state.size,
-        slots: [...state.stallSlots],
+        slots: [...state.displaySlots],
         suppressSave: state.suppressSave,
         inv0: state.inventory[catGoods[0].id],
         inv1: state.inventory[catGoods[1].id],
       };
       state.suppressSave = true;
       state.size = "stall";
-      state.stallSlots = normalizeStallSlots([]);
+      state.displaySlots = normalizeDisplaySlots([]);
       renderShelf();
       const emptySlots = els.shelfWall.querySelectorAll(".stall-slot.empty").length;
       const slotCount = els.shelfWall.querySelectorAll("[data-slot-index]").length;
 
-      state.stallSlots = normalizeStallSlots([catGoods[0].id, catGoods[1].id]);
+      state.displaySlots = normalizeDisplaySlots([catGoods[0].id, catGoods[1].id]);
       renderShelf();
       const stallFront = shelfPositionFactor(catGoods[0]);
       const stallBack = shelfPositionFactor(catGoods[1]);
@@ -946,7 +943,7 @@ async function main() {
       const drawerCurrentFirst = drawerFirst?.dataset.stallPlace === catGoods[1].id;
       const drawerButtons = els.stallDrawerList.querySelectorAll("[data-stall-place]").length;
       placeStallSlot(1, unplaced.id);
-      checks.stallSlots = {
+      checks.displaySlots = {
         emptySlots,
         slotCount,
         stallFront,
@@ -960,15 +957,15 @@ async function main() {
         unplacedSold,
         drawerOpen,
         drawerButtons,
-        placedAfter: state.stallSlots[1] === unplaced.id,
+        placedAfter: state.displaySlots[1] === unplaced.id,
         drawerClosed: els.stallDrawer.hidden,
       };
 
-      state.size = stallKeep.size;
-      state.stallSlots = stallKeep.slots;
-      state.suppressSave = stallKeep.suppressSave;
-      if (stallKeep.inv0 === undefined) delete state.inventory[catGoods[0].id]; else state.inventory[catGoods[0].id] = stallKeep.inv0;
-      if (stallKeep.inv1 === undefined) delete state.inventory[catGoods[1].id]; else state.inventory[catGoods[1].id] = stallKeep.inv1;
+      state.size = slotKeep.size;
+      state.displaySlots = slotKeep.slots;
+      state.suppressSave = slotKeep.suppressSave;
+      if (slotKeep.inv0 === undefined) delete state.inventory[catGoods[0].id]; else state.inventory[catGoods[0].id] = slotKeep.inv0;
+      if (slotKeep.inv1 === undefined) delete state.inventory[catGoods[1].id]; else state.inventory[catGoods[1].id] = slotKeep.inv1;
       if (unplaced) {
         if (unplacedInv === undefined) delete state.inventory[unplaced.id];
         else state.inventory[unplaced.id] = unplacedInv;
@@ -1253,8 +1250,8 @@ async function main() {
   check("托管策略与订单写入存档", data.orderPersist?.style === "strict" && data.orderPersist?.capped && data.orderPersist?.orders === 300, JSON.stringify(data.orderPersist));
   check("开局启动资金全为现金且无默认库存", data.emptyStart?.cash === 200000 && data.emptyStart?.inventoryEmpty && data.emptyStart?.backroomEmpty && data.emptyStart?.pricesSet, JSON.stringify(data.emptyStart));
   check("只看有库存商品筛选生效", data.ownedFilter?.owned === 1 && data.ownedFilter?.only && data.ownedFilter?.all > data.ownedFilter?.owned, JSON.stringify(data.ownedFilter));
-  check("摆台顺序决定陈列位与售卖加成", data.displayOrder?.first && data.displayOrder?.effect && data.displayOrder?.rows === 2 && data.displayOrder?.hasHint && data.displayOrder?.frontFactor > data.displayOrder?.backFactor, JSON.stringify(data.displayOrder));
-  check("摆摊限制格位并可用抽屉摆放商品", data.stallSlots?.emptySlots === 6 && data.stallSlots?.slotCount === 6 && data.stallSlots?.frontBetter && data.stallSlots?.soldOutHidden && data.stallSlots?.soldOutSlot && data.stallSlots?.soldOutFirstMatch && data.stallSlots?.soldOutDisabled && data.stallSlots?.drawerCurrentFirst && data.stallSlots?.unplacedSold === false && data.stallSlots?.drawerOpen && data.stallSlots?.drawerButtons > 0 && data.stallSlots?.placedAfter && data.stallSlots?.drawerClosed, JSON.stringify(data.stallSlots));
+  check("铺面格位按规格配置", data.slotSpec?.ascending && data.slotSpec?.stall === 12 && data.slotSpec?.small === 26 && data.slotSpec?.large === 40 && data.slotSpec?.floor === 54 && data.slotSpec?.smallPages === 3, JSON.stringify(data.slotSpec));
+  check("格位可用抽屉摆放商品且影响售卖", data.displaySlots?.emptySlots === 12 && data.displaySlots?.slotCount === 12 && data.displaySlots?.frontBetter && data.displaySlots?.soldOutHidden && data.displaySlots?.soldOutSlot && data.displaySlots?.soldOutFirstMatch && data.displaySlots?.soldOutDisabled && data.displaySlots?.drawerCurrentFirst && data.displaySlots?.unplacedSold === false && data.displaySlots?.drawerOpen && data.displaySlots?.drawerButtons > 0 && data.displaySlots?.placedAfter && data.displaySlots?.drawerClosed, JSON.stringify(data.displaySlots));
   check("商品类型与其他筛选分两行", data.filterRows?.direction === "column" && data.filterRows?.stacked && data.filterRows?.tabsWide && data.filterRows?.toolsWide, JSON.stringify(data.filterRows));
   check("铺面越大客流系数越高", data.sizeTraffic?.ascending && data.sizeTraffic?.stall === 0.75 && data.sizeTraffic?.floor === 1.4, JSON.stringify(data.sizeTraffic));
   check("铺面规格切换店面样式", data.sizeStyle?.distinct && data.sizeStyle?.floor === "floor" && data.sizeStyle?.stall === "stall", JSON.stringify(data.sizeStyle));

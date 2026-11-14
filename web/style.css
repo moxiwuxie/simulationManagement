@@ -4112,8 +4112,8 @@ body.backstage-open .toast {
 }
 
 /* ---------- 摆摊格位与商品抽屉 ---------- */
-.store-scene[data-size="stall"] .shelf-wall.is-stall {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+.store-scene[data-size="stall"] .shelf-wall.is-slots {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   grid-auto-rows: 50px;
 }
 
@@ -4369,7 +4369,7 @@ body.backstage-open .toast {
 }
 
 @media (max-width: 620px) {
-  .store-scene[data-size="stall"] .shelf-wall.is-stall {
+  .store-scene[data-size="stall"] .shelf-wall.is-slots {
     grid-auto-rows: 48px;
   }
   .stall-drawer {
