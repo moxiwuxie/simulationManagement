@@ -3345,11 +3345,24 @@ body.backstage-open .toast {
 }
 
 /* ---------- 铺面规模：摆摊 / 小门面 / 大门店 / 一整层 ---------- */
+/* 摆摊视角：来客在上方，商品摊位在下方 */
+.store-scene[data-size="stall"] .interaction-floor {
+  top: 46px;
+  bottom: auto;
+  height: 206px;
+  padding: 0 24px 6px;
+}
+.store-scene[data-size="stall"] .customer-stage { min-height: 0; height: 100%; }
+.store-scene[data-size="stall"] .empty-state { padding-bottom: 0; }
+.store-scene[data-size="stall"] .scene-tip { display: none; }
+.store-scene[data-size="stall"] .shelf-bar { top: 206px; left: 142px; right: 26px; }
 .store-scene[data-size="stall"] .shelf-wall {
-  left: 168px;
-  right: 54px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-auto-rows: 52px;
+  top: 238px;
+  left: 142px;
+  right: 26px;
+  z-index: 4;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-rows: 48px;
 }
 .store-scene[data-size="stall"] .shop-sign { transform: translateX(-50%) scale(0.9); }
 .store-scene[data-size="stall"] .counter { height: 104px; }
@@ -4075,3 +4088,24 @@ body.backstage-open .toast {
 
 /* 未解锁的店型 / 铺面 */
 .shop-type-bar button.is-locked, .map-sizes button.is-locked { opacity: 0.5; }
+
+/* 摆摊视角移动端：上方来客区收窄，下方摊位保持三列 */
+@media (max-width: 620px) {
+  .store-scene[data-size="stall"] .interaction-floor {
+    top: 38px;
+    height: 190px;
+    padding: 0 12px 4px;
+  }
+  .store-scene[data-size="stall"] .shelf-bar {
+    top: 188px;
+    left: 100px;
+    right: 12px;
+  }
+  .store-scene[data-size="stall"] .shelf-wall {
+    top: 218px;
+    left: 100px;
+    right: 12px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-rows: 50px;
+  }
+}

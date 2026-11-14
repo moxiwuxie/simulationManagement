@@ -904,6 +904,15 @@ async function main() {
         stall: stallStyle,
         distinct: floorStyle === "floor" && stallStyle === "stall",
       };
+      const sceneRect = els.storeScene.getBoundingClientRect();
+      const stageRect = els.stage.getBoundingClientRect();
+      const shelfRect = els.shelfWall.getBoundingClientRect();
+      checks.stallLayout = {
+        size: stallStyle,
+        customerAbove: stageRect.bottom <= shelfRect.top,
+        goodsInScene: shelfRect.top > sceneRect.top && shelfRect.bottom <= sceneRect.bottom + 1,
+        stageInScene: stageRect.top >= sceneRect.top,
+      };
       state.size = "small";
 
       /* 23. 解锁状态筛选：未解锁沉底 */
@@ -1144,6 +1153,7 @@ async function main() {
   check("摆台顺序决定陈列位与售卖加成", data.displayOrder?.first && data.displayOrder?.effect && data.displayOrder?.rows === 2 && data.displayOrder?.hasHint && data.displayOrder?.frontFactor > data.displayOrder?.backFactor, JSON.stringify(data.displayOrder));
   check("铺面越大客流系数越高", data.sizeTraffic?.ascending && data.sizeTraffic?.stall === 0.75 && data.sizeTraffic?.floor === 1.4, JSON.stringify(data.sizeTraffic));
   check("铺面规格切换店面样式", data.sizeStyle?.distinct && data.sizeStyle?.floor === "floor" && data.sizeStyle?.stall === "stall", JSON.stringify(data.sizeStyle));
+  check("摆摊视角来客在上商品在下", data.stallLayout?.size === "stall" && data.stallLayout?.customerAbove && data.stallLayout?.goodsInScene && data.stallLayout?.stageInScene, JSON.stringify(data.stallLayout));
   check("解锁状态筛选且未解锁沉底", data.backUnlock?.lockedCount > 0 && data.backUnlock?.sorted && data.backUnlock?.onlyUnlocked && data.backUnlock?.onlyLocked && data.backUnlock?.lowOnlyNoLocked && data.backUnlock?.categoryNoLocked && data.backUnlock?.searchNoLocked, JSON.stringify(data.backUnlock));
   check("进货与定价拆分为独立页签", data.tabSplit?.pricing?.visible && data.tabSplit?.pricing?.goodsHidden && data.tabSplit?.pricing?.rows > 0 && data.tabSplit?.pricing?.priceInputs > 0 && data.tabSplit?.pricing?.restockButtons === 0 && data.tabSplit?.pricing?.stockButtons > 0 && data.tabSplit?.pricing?.panelFlex && data.tabSplit?.pricing?.listScrollable && data.tabSplit?.purchase?.visible && data.tabSplit?.purchase?.rows > 0 && data.tabSplit?.purchase?.restockButtons > 0 && data.tabSplit?.purchase?.priceInputs === 0, JSON.stringify(data.tabSplit));
   check("进满补满后台并立即入库", data.fillBackroom?.full && data.fillBackroom?.delayed === undefined && data.fillBackroom?.qty === data.fillBackroom?.cap, JSON.stringify(data.fillBackroom));

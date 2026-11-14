@@ -444,7 +444,7 @@ Web 端另有 `.github/workflows/web.yml`：
 
 1. Node 22 + 静态服务 8787。
 2. 启动 headless Chrome，调试端口 9222。
-3. 运行 `node tools/web_regression.mjs`，61 项断言全通过才算成功。
+3. 运行 `node tools/web_regression.mjs`，62 项断言全通过才算成功。
 4. 失败时上传 8787 / Chrome 日志。
 
 本地运行 Web 回归需要先开两个进程：
