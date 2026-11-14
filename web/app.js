@@ -803,6 +803,11 @@ const state = {
   backOwnedOnly: false,
   /* 解锁状态筛选：all / unlocked / locked */
   backUnlock: "all",
+  /* 定价上架页的独立筛选 */
+  pricingCat: "all",
+  pricingQuery: "",
+  pricingOwnedOnly: false,
+  pricingUnlock: "all",
   mapMode: "start",
   pendingLoc: null,
   decor: { ...DEFAULT_DECOR },
@@ -983,6 +988,13 @@ const els = {
   backstageClose: $("backstageClose"),
   ledgerSummary: $("ledgerSummary"),
   ledgerList: $("ledgerList"),
+  pricingPanel: $("pricingPanel"),
+  pricingList: $("pricingList"),
+  pricingTabs: $("pricingTabs"),
+  pricingSearch: $("pricingSearch"),
+  pricingUnlockFilter: $("pricingUnlockFilter"),
+  pricingOwnedOnly: $("pricingOwnedOnly"),
+  pricingStockCat: $("pricingStockCat"),
   backTabs: $("backTabs"),
   backSearch: $("backSearch"),
   backUnlockFilter: $("backUnlockFilter"),
@@ -990,7 +1002,6 @@ const els = {
   backLowOnly: $("backLowOnly"),
   backOwnedOnly: $("backOwnedOnly"),
   backFillCat: $("backFillCat"),
-  backStockCat: $("backStockCat"),
   backViews: $("backViews"),
   goodsPanel: $("goodsPanel"),
   displayPanel: $("displayPanel"),
@@ -5590,32 +5601,56 @@ function backTabGoods() {
   return GOODS.filter((goods) => state.backCat === "all" || goods.cat === state.backCat);
 }
 
-function backFilteredGoods() {
-  const query = state.backQuery.trim().toLowerCase();
+/* 通用商品筛选：进货与定价两个页签共用同一套排序与解锁规则 */
+function filterGoodsList({ cat = "all", query = "", lowOnly = false, ownedOnly = false, unlock = "all" } = {}) {
+  const keyword = String(query || "").trim().toLowerCase();
   /* 除「只看未解锁」外，任何窄筛选都不应把未解锁商品算进来 */
-  const narrowed = state.backLowOnly || state.backOwnedOnly || !!query || state.backCat !== "all";
+  const narrowed = lowOnly || ownedOnly || !!keyword || cat !== "all";
   return GOODS.filter((goods) => {
-    if (state.backCat !== "all" && goods.cat !== state.backCat) return false;
-    if (query && !goods.name.toLowerCase().includes(query) && !goods.id.toLowerCase().includes(query)) return false;
+    if (cat !== "all" && goods.cat !== cat) return false;
+    if (keyword && !goods.name.toLowerCase().includes(keyword) && !goods.id.toLowerCase().includes(keyword)) return false;
     const unlocked = goodsUnlocked(goods);
-    if (narrowed && state.backUnlock === "all" && !unlocked) return false;
-    if (state.backLowOnly && stockOf(goods.id) > 0) return false;
-    if (state.backOwnedOnly && totalStockOf(goods.id) <= 0) return false;
-    if (state.backUnlock === "unlocked" && !unlocked) return false;
-    if (state.backUnlock === "locked" && unlocked) return false;
+    if (narrowed && unlock === "all" && !unlocked) return false;
+    if (lowOnly && stockOf(goods.id) > 0) return false;
+    if (ownedOnly && totalStockOf(goods.id) <= 0) return false;
+    if (unlock === "unlocked" && !unlocked) return false;
+    if (unlock === "locked" && unlocked) return false;
     return true;
   }).sort((a, b) => Number(goodsUnlocked(b)) - Number(goodsUnlocked(a)));
 }
 
-function renderBackTabs() {
-  els.backTabs.innerHTML = [{ id: "all", name: "全部", icon: "🧺" }, ...CATEGORIES.map((cat) => ({
+function backFilteredGoods() {
+  return filterGoodsList({
+    cat: state.backCat,
+    query: state.backQuery,
+    lowOnly: state.backLowOnly,
+    ownedOnly: state.backOwnedOnly,
+    unlock: state.backUnlock,
+  });
+}
+
+function pricingFilteredGoods() {
+  return filterGoodsList({
+    cat: state.pricingCat,
+    query: state.pricingQuery,
+    ownedOnly: state.pricingOwnedOnly,
+    unlock: state.pricingUnlock,
+  });
+}
+
+function categoryTabsMarkup(activeCat) {
+  return [{ id: "all", name: "全部", icon: "🧺" }, ...CATEGORIES.map((cat) => ({
     id: cat.name, name: cat.name, icon: cat.icon,
   }))].map((cat) => {
     const count = cat.id === "all" ? GOODS.length : goodsOfCategory(cat.id).length;
-    return `<button type="button" class="back-tab ${state.backCat === cat.id ? "on" : ""}" data-cat="${cat.id}">
+    return `<button type="button" class="back-tab ${activeCat === cat.id ? "on" : ""}" data-cat="${cat.id}">
       ${cat.icon} ${cat.name}<span>${count}</span>
     </button>`;
   }).join("");
+}
+
+function renderBackTabs() {
+  els.backTabs.innerHTML = categoryTabsMarkup(state.backCat);
 }
 
 /* 后台标签提醒：员工页有招聘待审批时显示红点数字 */
@@ -5647,7 +5682,8 @@ function renderBackstage() {
   const growthView = state.backView === "growth";
   const ordersView = state.backView === "orders";
   const displayView = state.backView === "display";
-  els.goodsPanel.hidden = decorView || strategyView || staffView || branchView || growthView || ordersView || displayView;
+  const pricingView = state.backView === "pricing";
+  els.goodsPanel.hidden = decorView || strategyView || staffView || branchView || growthView || ordersView || displayView || pricingView;
   els.decorPanel.hidden = !decorView;
   els.strategyPanel.hidden = !strategyView;
   els.staffPanel.hidden = !staffView;
@@ -5655,6 +5691,7 @@ function renderBackstage() {
   els.growthPanel.hidden = !growthView;
   els.ordersPanel.hidden = !ordersView;
   els.displayPanel.hidden = !displayView;
+  els.pricingPanel.hidden = !pricingView;
   els.backViews.querySelectorAll("button").forEach((button) => {
     button.classList.toggle("on", button.dataset.view === state.backView);
   });
@@ -5669,6 +5706,10 @@ function renderBackstage() {
   }
   if (displayView) {
     renderDisplayPanel();
+    return;
+  }
+  if (pricingView) {
+    renderPricingPanel(locked);
     return;
   }
   if (strategyView) {
@@ -5703,9 +5744,7 @@ function renderBackstage() {
   }
   const allScope = state.backCat === "all";
   els.backFillCat.textContent = allScope ? "全部补货" : "本类补满";
-  els.backStockCat.textContent = allScope ? "全部上架" : "本类上架";
   els.backFillCat.disabled = !canPlayerRestock();
-  els.backStockCat.disabled = state.phase === "settle";
   const list = backFilteredGoods();
 
   if (!list.length) {
@@ -5713,29 +5752,55 @@ function renderBackstage() {
     return;
   }
 
-  els.ledgerList.innerHTML = list.map((goods) => {
-    const shelf = shelfStockOf(goods.id);
-    const back = backStockOf(goods.id);
-    const unit = unitCost(goods);
-    const left = supplyLeftOf(goods.id);
-    const price = state.prices[goods.id] || goods.base;
-    const { lower, upper } = priceBounds(goods);
-    const margin = price > 0 ? Math.round(((price - unit) / price) * 100) : 0;
-    const dynamic = effectivePrice(goods);
-    const rule = weatherRuleFor(goods);
-    const dynNote = dynamic !== price
-      ? (state.clearance ? " · 今日清仓5折" : rule ? ` · ${rule.reason} +${Math.round((rule.mult - 1) * 100)}%` : "")
-      : "";
-    const unlock = goodsUnlockState(goods);
-    const isLocked = !unlock.unlocked;
-    const canRestockBase = canPlayerRestock() && !isLocked && back < backCapOf(goods) && state.cash >= unit;
-    const canRestock = canRestockBase && left > 0;
-    const canFillBack = canRestockBase;
-    const canStock = state.phase !== "settle" && back > 0 && shelf < capOf(goods);
-    const canUnshelf = state.phase !== "settle" && shelf > 0 && back < backCapOf(goods);
-    const rates = spoilageRates(goods);
-    const low = shelf <= 1;
-    return `
+  els.ledgerList.innerHTML = list.map((goods) => ledgerRowMarkup(goods, { locked, mode: "purchase" })).join("");
+}
+
+/* 进货 / 定价共用的商品行：进货页只留下单，定价页只留改价与上架 */
+function ledgerRowMarkup(goods, { locked, mode }) {
+  const purchase = mode === "purchase";
+  const shelf = shelfStockOf(goods.id);
+  const back = backStockOf(goods.id);
+  const unit = unitCost(goods);
+  const left = supplyLeftOf(goods.id);
+  const price = state.prices[goods.id] || goods.base;
+  const { lower, upper } = priceBounds(goods);
+  const margin = price > 0 ? Math.round(((price - unit) / price) * 100) : 0;
+  const dynamic = effectivePrice(goods);
+  const rule = weatherRuleFor(goods);
+  const dynNote = dynamic !== price
+    ? (state.clearance ? " · 今日清仓5折" : rule ? ` · ${rule.reason} +${Math.round((rule.mult - 1) * 100)}%` : "")
+    : "";
+  const unlock = goodsUnlockState(goods);
+  const isLocked = !unlock.unlocked;
+  const canRestockBase = canPlayerRestock() && !isLocked && back < backCapOf(goods) && state.cash >= unit;
+  const canRestock = canRestockBase && left > 0;
+  const canFillBack = canRestockBase;
+  const canStock = state.phase !== "settle" && back > 0 && shelf < capOf(goods);
+  const canUnshelf = state.phase !== "settle" && shelf > 0 && back < backCapOf(goods);
+  const rates = spoilageRates(goods);
+  const low = shelf <= 1;
+  const priceBlock = purchase
+    ? `<div class="ledger-price ledger-price-read"><small>今日售价 <b>${money(dynamic)}</b><br>毛利 <b>${margin}%</b>${dynNote}</small></div>`
+    : `<div class="ledger-price">
+          <div class="stepper">
+            <button type="button" data-act="price" data-gid="${goods.id}" data-delta="-10" ${locked || isLocked ? "disabled" : ""}>−</button>
+            <input type="number" data-price-input data-gid="${goods.id}" value="${(price / 100).toFixed(2)}"
+              min="${(lower / 100).toFixed(2)}" max="${(upper / 100).toFixed(2)}" step="0.1" ${locked || isLocked ? "disabled" : ""}>
+            <button type="button" data-act="price" data-gid="${goods.id}" data-delta="10" ${locked || isLocked ? "disabled" : ""}>+</button>
+          </div>
+          <small>毛利 <b>${margin}%</b>${dynNote}</small>
+        </div>`;
+  const actionBlock = purchase
+    ? `<div class="ledger-restock">
+          <button type="button" data-act="restock" data-gid="${goods.id}" data-qty="4" ${canRestock ? "" : "disabled"}>进 4</button>
+          <button type="button" data-act="restock" data-gid="${goods.id}" data-qty="10" ${canRestock ? "" : "disabled"}>进 10</button>
+          <button type="button" data-act="restock" data-gid="${goods.id}" data-qty="fill" ${canFillBack ? "" : "disabled"} title="按后台容量补满，立即入库，不受当日额度限制">进满</button>
+        </div>`
+    : `<div class="ledger-restock">
+          <button type="button" class="shelf-btn" data-act="shelf" data-gid="${goods.id}" data-qty="fill" ${canStock ? "" : "disabled"}>上架</button>
+          <button type="button" class="shelf-btn unshelf-btn" data-act="unshelf" data-gid="${goods.id}" data-qty="fill" ${canUnshelf ? "" : "disabled"}>下架</button>
+        </div>`;
+  return `
       <div class="ledger-row ${low ? "is-low" : ""} ${isLocked ? "is-locked" : ""}" data-gid="${goods.id}">
         <div class="ledger-good">
           ${iconMarkup(goods, "ledger-icon")}
@@ -5749,26 +5814,29 @@ function renderBackstage() {
         <div class="ledger-stock">
           <span>台面 <b class="${low ? "low" : ""}">${shelf}</b> / ${capOf(goods)}</span>
           <span>后台 <b class="${back > 0 ? "has-back" : ""}">${back}</b> / ${backCapOf(goods)}</span>
-          <span>到货 <b>${left}</b> · 进价 <b>${money(unit)}</b></span>
+          ${purchase
+            ? `<span>到货 <b>${left}</b> · 进价 <b>${money(unit)}</b></span>`
+            : `<span>进价 <b>${money(unit)}</b> · 上限 <b>${money(upper)}</b></span>`}
         </div>
-        <div class="ledger-price">
-          <div class="stepper">
-            <button type="button" data-act="price" data-gid="${goods.id}" data-delta="-10" ${locked || isLocked ? "disabled" : ""}>−</button>
-            <input type="number" data-price-input data-gid="${goods.id}" value="${(price / 100).toFixed(2)}"
-              min="${(lower / 100).toFixed(2)}" max="${(upper / 100).toFixed(2)}" step="0.1" ${locked || isLocked ? "disabled" : ""}>
-            <button type="button" data-act="price" data-gid="${goods.id}" data-delta="10" ${locked || isLocked ? "disabled" : ""}>+</button>
-          </div>
-          <small>毛利 <b>${margin}%</b>${dynNote}</small>
-        </div>
-        <div class="ledger-restock">
-          <button type="button" data-act="restock" data-gid="${goods.id}" data-qty="4" ${canRestock ? "" : "disabled"}>进 4</button>
-          <button type="button" data-act="restock" data-gid="${goods.id}" data-qty="10" ${canRestock ? "" : "disabled"}>进 10</button>
-          <button type="button" data-act="restock" data-gid="${goods.id}" data-qty="fill" ${canFillBack ? "" : "disabled"} title="按后台容量补满，立即入库，不受当日额度限制">进满</button>
-          <button type="button" class="shelf-btn" data-act="shelf" data-gid="${goods.id}" data-qty="fill" ${canStock ? "" : "disabled"}>上架</button>
-          <button type="button" class="shelf-btn unshelf-btn" data-act="unshelf" data-gid="${goods.id}" data-qty="fill" ${canUnshelf ? "" : "disabled"}>下架</button>
-        </div>
+        ${priceBlock}
+        ${actionBlock}
       </div>`;
-  }).join("");
+}
+
+/* 定价上架页：只处理售价与台面，不再混入进货按钮 */
+function renderPricingPanel(locked) {
+  els.pricingTabs.innerHTML = categoryTabsMarkup(state.pricingCat);
+  els.pricingOwnedOnly.checked = state.pricingOwnedOnly;
+  els.pricingUnlockFilter.value = state.pricingUnlock;
+  if (document.activeElement !== els.pricingSearch) els.pricingSearch.value = state.pricingQuery;
+  els.pricingStockCat.textContent = state.pricingCat === "all" ? "全部上架" : "本类上架";
+  els.pricingStockCat.disabled = state.phase === "settle";
+  const list = pricingFilteredGoods();
+  if (!list.length) {
+    els.pricingList.innerHTML = `<div class="ledger-empty">没有符合条件的商品。</div>`;
+    return;
+  }
+  els.pricingList.innerHTML = list.map((goods) => ledgerRowMarkup(goods, { locked, mode: "pricing" })).join("");
 }
 
 function renderDecorPanel(locked) {
@@ -6166,12 +6234,12 @@ function unshelf(goods, wanted = "fill") {
 }
 
 /* 当前筛选下的商品一键补满台面 */
-function stockCategory() {
+function stockCategory(cat = state.backCat) {
   if (state.phase === "settle") {
     toast("已经打烊，明天再上架");
     return;
   }
-  const list = backTabGoods();
+  const list = GOODS.filter((goods) => cat === "all" || goods.cat === cat);
   /* 批量上架：当前标签页内所有商品都补到台面容量上限 */
   let units = 0;
   let count = 0;
@@ -6188,7 +6256,7 @@ function stockCategory() {
     return;
   }
   StallAudio.tap();
-  const label = state.backCat === "all" ? "全部" : state.backCat;
+  const label = cat === "all" ? "全部" : cat;
   logLine(`台面补货 ${label}：${count} 种 / ${units} 件`, "good");
   toast(`已上架 ${count} 种 / ${units} 件`);
   renderHud();
@@ -7802,8 +7870,33 @@ els.backstageClose.addEventListener("click", closeBackstage);
 els.backstageMask.addEventListener("click", closeBackstage);
 els.ledgerList.addEventListener("click", handleLedgerClick);
 els.ledgerList.addEventListener("change", handleLedgerChange);
+els.pricingList.addEventListener("click", handleLedgerClick);
+els.pricingList.addEventListener("change", handleLedgerChange);
 els.backFillCat.addEventListener("click", fillCategory);
-els.backStockCat.addEventListener("click", stockCategory);
+els.pricingStockCat.addEventListener("click", () => stockCategory(state.pricingCat));
+
+els.pricingTabs.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-cat]");
+  if (!button) return;
+  state.pricingCat = button.dataset.cat;
+  StallAudio.tap();
+  renderBackstage();
+});
+
+els.pricingSearch.addEventListener("input", () => {
+  state.pricingQuery = els.pricingSearch.value;
+  renderBackstage();
+});
+
+els.pricingOwnedOnly.addEventListener("change", () => {
+  state.pricingOwnedOnly = els.pricingOwnedOnly.checked;
+  renderBackstage();
+});
+
+els.pricingUnlockFilter.addEventListener("change", () => {
+  state.pricingUnlock = els.pricingUnlockFilter.value || "all";
+  renderBackstage();
+});
 
 els.backTabs.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-cat]");

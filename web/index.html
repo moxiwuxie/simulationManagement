@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>阿福蔬果 · 小店模拟器</title>
-<link rel="stylesheet" href="style.css?v=65">
+<link rel="stylesheet" href="style.css?v=66">
 </head>
 <body>
   <header class="topbar">
@@ -159,7 +159,8 @@
       <button id="backstageClose" class="ghost-btn" type="button">返回店面</button>
     </header>
     <div id="backViews" class="back-views" role="tablist" aria-label="后台模块">
-      <button type="button" data-view="goods" class="on">进货与定价</button>
+      <button type="button" data-view="goods" class="on">进货</button>
+      <button type="button" data-view="pricing">定价上架</button>
       <button type="button" data-view="display">摆台陈列</button>
       <button type="button" data-view="decor">店铺装修</button>
       <button type="button" data-view="strategy">经营策略</button>
@@ -182,14 +183,34 @@
           <label class="low-toggle"><input id="backLowOnly" type="checkbox"> 只看缺货</label>
           <label class="low-toggle"><input id="backOwnedOnly" type="checkbox"> 只看有库存</label>
           <button id="backFillCat" class="ghost-btn" type="button">本类补缺</button>
-          <button id="backStockCat" class="ghost-btn" type="button">本类上架</button>
         </div>
       </div>
       <div class="ledger-table">
         <div class="ledger-cols">
-          <span>商品</span><span>台面 / 后台 / 到货</span><span>售价</span><span>进货 · 上架</span>
+          <span>商品</span><span>台面 / 后台 / 到货</span><span>售价</span><span>进货</span>
         </div>
         <div id="ledgerList" class="ledger-list"></div>
+      </div>
+    </div>
+    <div id="pricingPanel" hidden>
+      <div class="ledger-toolbar">
+        <div id="pricingTabs" class="back-tabs" role="tablist" aria-label="定价品类"></div>
+        <div class="back-tools">
+          <input id="pricingSearch" type="search" placeholder="搜索商品" autocomplete="off">
+          <select id="pricingUnlockFilter" class="supplier-select" title="解锁状态">
+            <option value="all">全部解锁状态</option>
+            <option value="unlocked">只看已解锁</option>
+            <option value="locked">只看未解锁</option>
+          </select>
+          <label class="low-toggle"><input id="pricingOwnedOnly" type="checkbox"> 只看有库存</label>
+          <button id="pricingStockCat" class="ghost-btn" type="button">本类上架</button>
+        </div>
+      </div>
+      <div class="ledger-table">
+        <div class="ledger-cols">
+          <span>商品</span><span>台面 / 后台</span><span>售价</span><span>上架</span>
+        </div>
+        <div id="pricingList" class="ledger-list"></div>
       </div>
     </div>
     <div id="displayPanel" class="strategy-panel" hidden></div>
@@ -391,8 +412,8 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-  <script src="catalog.js?v=65"></script>
-  <script src="audio.js?v=65"></script>
-  <script src="app.js?v=65"></script>
+  <script src="catalog.js?v=66"></script>
+  <script src="audio.js?v=66"></script>
+  <script src="app.js?v=66"></script>
 </body>
 </html>
