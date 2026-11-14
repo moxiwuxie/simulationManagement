@@ -15,6 +15,8 @@ const EXIT_LIQUIDATION_RATE = 0.5;
 const EXIT_BRANCH_RATE = 0.7;
 const MAX_DAY_REVENUE = 5000000;
 const SHELF_PAGE_SIZE = 12;
+/* 摆摊只能摆固定数量的商品格位，默认全空，由玩家逐格摆放 */
+const STALL_SLOTS = 6;
 const MOVE_BASE_FEE = 5000;
 /* 员工体力：接待、开门自动任务、营业中维护都会消耗，隔夜按心情恢复 */
 const STAMINA_MAX = 100;
@@ -797,6 +799,8 @@ const state = {
   shelfPage: 0,
   /* 摆台顺序：按品类保存商品 id 顺序，越靠前越容易被顾客选中 */
   shelfOrder: {},
+  /* 摆摊格位：固定 6 格，存商品 id，null 表示空位；未摆放的商品不参与销售 */
+  stallSlots: Array(STALL_SLOTS).fill(null),
   backCat: "all",
   backQuery: "",
   backLowOnly: false,
@@ -960,6 +964,11 @@ const els = {
   shelfPageLabel: $("shelfPageLabel"),
   shelfPrev: $("shelfPrev"),
   shelfNext: $("shelfNext"),
+  stallDrawer: $("stallDrawer"),
+  stallDrawerTitle: $("stallDrawerTitle"),
+  stallDrawerSub: $("stallDrawerSub"),
+  stallDrawerList: $("stallDrawerList"),
+  stallDrawerClose: $("stallDrawerClose"),
   storeScene: $("storeScene"),
   stage: $("customerStage"),
   floorProps: $("floorProps"),
@@ -1558,8 +1567,7 @@ function locationTrafficFactor(loc) {
 function shelfQuality() {
   let sum = 0;
   let count = 0;
-  for (const goods of GOODS) {
-    if (shelfStockOf(goods.id) <= 0) continue;
+  for (const goods of stockedDisplayGoods()) {
     sum += appealOf(goods.id);
     count += 1;
   }
@@ -1568,9 +1576,7 @@ function shelfQuality() {
 
 function stockedCategoryCount() {
   const cats = new Set();
-  for (const goods of GOODS) {
-    if (shelfStockOf(goods.id) > 0) cats.add(goods.cat);
-  }
+  for (const goods of stockedDisplayGoods()) cats.add(goods.cat);
   return cats.size;
 }
 
@@ -1578,8 +1584,7 @@ function stockedCategoryCount() {
 function priceImpression() {
   let sum = 0;
   let count = 0;
-  for (const goods of GOODS) {
-    if (shelfStockOf(goods.id) <= 0) continue;
+  for (const goods of stockedDisplayGoods()) {
     const base = Math.max(1, goods.base);
     sum += 65 + (1 - effectivePrice(goods) / base) * 120;
     count += 1;
@@ -1983,13 +1988,25 @@ function makeCustomer(index, rng) {
 function scoreCandidates(customer, rng = Math.random) {
   const stockoutCats = [];
   const byCat = new Map();
-  for (const goods of GOODS) {
-    if (shelfStockOf(goods.id) <= 0) {
-      if (!stockoutCats.includes(goods.cat)) stockoutCats.push(goods.cat);
-      continue;
+  if (isStallShop()) {
+    /* 摆摊只卖格位上的商品；空格位不参与销售，格位商品缺货才算缺货 */
+    for (const goods of stallSlotGoods()) {
+      if (shelfStockOf(goods.id) <= 0) {
+        if (!stockoutCats.includes(goods.cat)) stockoutCats.push(goods.cat);
+        continue;
+      }
+      if (!byCat.has(goods.cat)) byCat.set(goods.cat, []);
+      byCat.get(goods.cat).push(goods);
     }
-    if (!byCat.has(goods.cat)) byCat.set(goods.cat, []);
-    byCat.get(goods.cat).push(goods);
+  } else {
+    for (const goods of GOODS) {
+      if (shelfStockOf(goods.id) <= 0) {
+        if (!stockoutCats.includes(goods.cat)) stockoutCats.push(goods.cat);
+        continue;
+      }
+      if (!byCat.has(goods.cat)) byCat.set(goods.cat, []);
+      byCat.get(goods.cat).push(goods);
+    }
   }
 
   /* 先按品类挑选「想逛的 3 个区」，再在区内选具体商品。
@@ -2149,12 +2166,18 @@ async function openDay() {
   const dutyNotes = runStaffDuties();
   for (const note of dutyNotes) logLine(note, "good");
   if (dutyNotes.length) renderShelf();
-  if (GOODS.every((goods) => shelfStockOf(goods.id) === 0)) {
+  if (!stockedDisplayGoods().length) {
     state.staffAutoDay = 0;
     StallAudio.decline();
-    toast(GOODS.some((goods) => backStockOf(goods.id) > 0)
-      ? "台面是空的，先去后台把货上架"
-      : "货架是空的，先去后台进货");
+    if (isStallShop() && !stallSlotGoods().length) {
+      toast("摊位还没有摆放商品：点击格位，从右侧抽屉摆上货");
+    } else if (isStallShop()) {
+      toast("格位上的商品都缺货了，先去后台补货上架");
+    } else {
+      toast(GOODS.some((goods) => backStockOf(goods.id) > 0)
+        ? "台面是空的，先去后台把货上架"
+        : "货架是空的，先去后台进货");
+    }
     return;
   }
 
@@ -2741,7 +2764,7 @@ function computeRating(customer, bought, stockouts, declines, bargains, fairness
 }
 
 function avgAppeal() {
-  const list = GOODS.filter((goods) => stockOf(goods.id) > 0);
+  const list = isStallShop() ? stockedDisplayGoods() : GOODS.filter((goods) => stockOf(goods.id) > 0);
   if (!list.length) return 75;
   return list.reduce((sum, goods) => sum + appealOf(goods.id), 0) / list.length;
 }
@@ -3247,6 +3270,40 @@ function goodsOfCategory(cat) {
   return GOODS.filter((goods) => goods.cat === cat);
 }
 
+function isStallShop() {
+  return state.size === "stall";
+}
+
+/* 摆摊格位统一按固定长度整理：去重、去掉无效商品，空位保持 null */
+function normalizeStallSlots(list) {
+  const slots = Array.isArray(list) ? list.slice(0, STALL_SLOTS) : [];
+  while (slots.length < STALL_SLOTS) slots.push(null);
+  const seen = new Set();
+  return slots.map((gid) => {
+    if (!gid || seen.has(gid) || !GOOD_INDEX[gid]) return null;
+    seen.add(gid);
+    return gid;
+  });
+}
+
+/* 当前摆在摊位格位上的商品（含暂时缺货的） */
+function stallSlotGoods() {
+  return normalizeStallSlots(state.stallSlots)
+    .map((gid) => GOOD_INDEX[gid])
+    .filter((goods) => goods && goodsUnlocked(goods));
+}
+
+/* 前台实际陈列的商品：摆摊看格位，其他铺面看台面库存 */
+function displayedGoods() {
+  if (isStallShop()) return stallSlotGoods();
+  return GOODS.filter((goods) => shelfStockOf(goods.id) > 0);
+}
+
+/* 有货且实际陈列的商品：用于开店校验、门店印象与客流估算 */
+function stockedDisplayGoods() {
+  return displayedGoods().filter((goods) => shelfStockOf(goods.id) > 0);
+}
+
 /* 摆台顺序：每个品类保存一份商品 id 顺序；未安排过的商品按目录顺序补在末尾 */
 function displayOrderOf(cat) {
   const all = goodsOfCategory(cat);
@@ -3259,13 +3316,28 @@ function displayOrderOf(cat) {
 }
 
 function shelfRankOf(goods) {
+  if (isStallShop()) {
+    const list = stallSlotGoods();
+    const index = list.findIndex((item) => item.id === goods.id);
+    return index < 0 ? list.length : index;
+  }
   const list = displayOrderOf(goods.cat);
   const index = list.findIndex((item) => item.id === goods.id);
   return index < 0 ? list.length : index;
 }
 
-/* 陈列位次影响购买概率：最前 +12%，最后 -12%；只有台面有货才参与排位 */
+/* 陈列位次影响购买概率：最前 +12%，最后 -12%；只有台面有货才参与排位。
+ * 摆摊按格位顺序排位，其他铺面按品类摆台顺序排位。 */
 function shelfPositionFactor(goods) {
+  if (isStallShop()) {
+    const filled = normalizeStallSlots(state.stallSlots)
+      .filter((gid) => GOOD_INDEX[gid] && goodsUnlocked(GOOD_INDEX[gid]));
+    const index = filled.indexOf(goods.id);
+    if (index < 0) return 1;
+    if (filled.length <= 1) return 1.04;
+    const t = index / (filled.length - 1);
+    return +(1.12 - 0.24 * t).toFixed(3);
+  }
   const onShelf = goodsOfCategory(goods.cat)
     .filter((item) => shelfStockOf(item.id) > 0)
     .sort((a, b) => shelfRankOf(a) - shelfRankOf(b));
@@ -3289,7 +3361,7 @@ function shelfPageCount() {
   return Math.max(1, Math.ceil(goodsOfCategory(state.shelfCat).length / SHELF_PAGE_SIZE));
 }
 
-function shelfItemMarkup(goods) {
+function shelfItemMarkup(goods, { slotIndex = -1 } = {}) {
   const stock = shelfStockOf(goods.id);
   const back = backStockOf(goods.id);
   const basePrice = state.prices[goods.id] || goods.base;
@@ -3301,8 +3373,17 @@ function shelfItemMarkup(goods) {
   const stockText = stock > 0
     ? `台面 ${stock} ${goods.unit}${back > 0 ? ` · 后台 ${back}` : ""}`
     : back > 0 ? `台面空 · 后台 ${back}` : "已售罄";
+  const slot = slotIndex >= 0;
+  const slotAttrs = slot
+    ? ` data-slot-index="${slotIndex}" role="button" tabindex="0" aria-label="第 ${slotIndex + 1} 格 ${goods.name}，点击更换"`
+    : "";
+  const pct = slot ? Math.round((shelfPositionFactor(goods) - 1) * 100) : 0;
+  const slotBadge = slot
+    ? `<span class="stall-pos ${pct >= 0 ? "up" : "down"}">${pct >= 0 ? "+" : ""}${pct}%</span>`
+    : "";
   return `
-    <article class="shelf-item ${stock > 0 ? "" : "sold-out"}" data-gid="${goods.id}">
+    <article class="shelf-item ${stock > 0 ? "" : "sold-out"}" data-gid="${goods.id}"${slotAttrs}>
+      ${slotBadge}
       ${iconMarkup(goods)}
       <div class="shelf-main">
         <div class="shelf-name">${goods.name}</div>
@@ -3313,8 +3394,32 @@ function shelfItemMarkup(goods) {
     </article>`;
 }
 
+function stallSlotMarkup(gid, index) {
+  const goods = GOOD_INDEX[gid];
+  if (!goods) {
+    return `<button type="button" class="stall-slot empty" data-slot-index="${index}"
+      aria-label="第 ${index + 1} 格空位，点击摆放商品">
+      <span class="stall-plus">＋</span>
+      <small>第 ${index + 1} 格</small>
+    </button>`;
+  }
+  return shelfItemMarkup(goods, { slotIndex: index });
+}
+
 function renderShelf() {
   applyDecorTheme();
+  const stall = isStallShop();
+  els.shelfWall.classList.toggle("is-stall", stall);
+  if (stall) {
+    if (!els.stallDrawer.hidden) closeStallDrawer();
+    els.shelfTabs.innerHTML = `<span class="stall-shelf-hint">🧺 摊位格位 ${STALL_SLOTS} 格 · 点击格位摆放商品</span>`;
+    els.shelfPager.hidden = true;
+    els.shelfWall.innerHTML = normalizeStallSlots(state.stallSlots)
+      .map((gid, index) => stallSlotMarkup(gid, index))
+      .join("");
+    return;
+  }
+  if (!els.stallDrawer.hidden) closeStallDrawer();
   els.shelfTabs.innerHTML = CATEGORIES.map((cat) => {
     const list = goodsOfCategory(cat.name);
     const low = list.filter((goods) => stockOf(goods.id) <= 1).length;
@@ -3331,10 +3436,11 @@ function renderShelf() {
   els.shelfPrev.disabled = state.shelfPage <= 0;
   els.shelfNext.disabled = state.shelfPage >= pages - 1;
 
-  els.shelfWall.innerHTML = shelfPageGoods().map(shelfItemMarkup).join("");
+  els.shelfWall.innerHTML = shelfPageGoods().map((goods) => shelfItemMarkup(goods)).join("");
 }
 
 function ensureShelfShows(goods) {
+  if (isStallShop()) return;
   const list = displayOrderOf(goods.cat);
   const index = list.findIndex((item) => item.id === goods.id);
   if (index < 0) return;
@@ -3343,6 +3449,86 @@ function ensureShelfShows(goods) {
   state.shelfCat = goods.cat;
   state.shelfPage = page;
   renderShelf();
+}
+
+/* ---------------- 摆摊格位：点击格位，从右侧抽屉摆放商品 ---------------- */
+let stallDrawerSlot = null;
+
+function renderStallDrawer() {
+  if (stallDrawerSlot === null) return;
+  const index = stallDrawerSlot;
+  const slots = normalizeStallSlots(state.stallSlots);
+  const currentGid = slots[index] || null;
+  const current = currentGid ? GOOD_INDEX[currentGid] : null;
+  const taken = new Set(slots.filter((gid, i) => gid && i !== index));
+  const goodsList = GOODS.filter((goods) => goodsUnlocked(goods)
+    && goods.id !== currentGid
+    && !taken.has(goods.id)
+    && shelfStockOf(goods.id) > 0);
+  els.stallDrawerTitle.textContent = `第 ${index + 1} 格`;
+  els.stallDrawerSub.textContent = current
+    ? `${current.name} · 台面 ${shelfStockOf(current.id)} ${current.unit}`
+    : "点击商品摆到这一格";
+  const pct = current ? Math.round((shelfPositionFactor(current) - 1) * 100) : 0;
+  els.stallDrawerList.innerHTML = `
+    ${current ? `
+      <div class="stall-current">
+        <span>当前格位</span>
+        <b>${current.name}</b>
+        <em class="${pct >= 0 ? "ok" : "bad"}">${pct >= 0 ? "+" : ""}${pct}%</em>
+        <button type="button" class="stall-clear" data-stall-clear>清空</button>
+      </div>` : ""}
+    ${goodsList.length ? goodsList.map((goods) => `
+      <button type="button" class="stall-pick" data-stall-place="${goods.id}">
+        ${iconMarkup(goods)}
+        <span class="stall-pick-main">
+          <b>${goods.name}</b>
+          <small>台面 ${shelfStockOf(goods.id)} ${goods.unit} · 后台 ${backStockOf(goods.id)}</small>
+        </span>
+        <em>¥${yuan(effectivePrice(goods))}</em>
+      </button>`).join("") : `<p class="stall-drawer-empty">${current ? "暂时没有其他可摆放的商品。" : "台面没有可摆放的商品，先到后台进货并上架。"}</p>`}
+  `;
+}
+
+function openStallDrawer(index) {
+  if (!isStallShop()) return;
+  if (!Number.isInteger(index) || index < 0 || index >= STALL_SLOTS) return;
+  stallDrawerSlot = index;
+  renderStallDrawer();
+  els.stallDrawer.hidden = false;
+  StallAudio.tap();
+}
+
+function closeStallDrawer() {
+  stallDrawerSlot = null;
+  els.stallDrawer.hidden = true;
+}
+
+function placeStallSlot(index, gid) {
+  const goods = GOOD_INDEX[gid];
+  if (!goods || !isStallShop()) return;
+  if (shelfStockOf(gid) <= 0) {
+    toast(`${goods.name}台面没货，先去后台补货上架`);
+    return;
+  }
+  const slots = normalizeStallSlots(state.stallSlots);
+  const other = slots.indexOf(gid);
+  if (other >= 0 && other !== index) slots[other] = null;
+  slots[index] = gid;
+  state.stallSlots = slots;
+  persistPrep();
+  renderShelf();
+  toast(`${goods.name}已摆到第 ${index + 1} 格`);
+}
+
+function clearStallSlot(index) {
+  const slots = normalizeStallSlots(state.stallSlots);
+  if (!slots[index]) return;
+  slots[index] = null;
+  state.stallSlots = slots;
+  persistPrep();
+  renderShelf();
+  toast(`已清空第 ${index + 1} 格`);
 }
 
 function updateShelfItem(gid) {
@@ -5098,6 +5284,40 @@ function renderGrowthPanel() {
 
 /* ---------------- 摆台陈列：自定义商品顺序，影响顾客选中概率 ---------------- */
 function renderDisplayPanel() {
+  if (isStallShop()) {
+    const slots = normalizeStallSlots(state.stallSlots);
+    els.displayPanel.innerHTML = `
+      <section class="strategy-group">
+        <h3>🧺 摊位格位 <small>共 ${STALL_SLOTS} 格，点击前场格位摆放</small></h3>
+        <p class="strategy-note">摊位只能陈列 ${STALL_SLOTS} 种商品，空格位不参与销售。格位越靠前越好卖：最前位 +12%，最后位 -12%；点击前场格位可打开右侧商品抽屉。</p>
+        <div class="display-list">
+          ${slots.map((gid, index) => {
+            const goods = GOOD_INDEX[gid];
+            if (!goods) {
+              return `
+                <div class="display-row">
+                  <span class="display-rank">${index + 1}</span>
+                  <b>空格位</b>
+                  <span>点击前场格位摆放</span>
+                  <em>—</em>
+                  <span></span>
+                </div>`;
+            }
+            const pct = Math.round((shelfPositionFactor(goods) - 1) * 100);
+            return `
+              <div class="display-row">
+                <span class="display-rank">${index + 1}</span>
+                <b>${goods.name}</b>
+                <span>台面 ${shelfStockOf(goods.id)} ${goods.unit}</span>
+                <em class="${pct >= 0 ? "ok" : "bad"}">${pct >= 0 ? "+" : ""}${pct}%</em>
+                <span></span>
+              </div>`;
+          }).join("")}
+        </div>
+      </section>`;
+    return;
+  }
+
   const sections = CATEGORIES.map((cat) => ({
     cat,
     list: displayOrderOf(cat.name).filter((goods) => shelfStockOf(goods.id) > 0),
@@ -7259,6 +7479,7 @@ function saveGame() {
       orders: (state.orders || []).slice(-MAX_ORDER_HISTORY),
       orderSeq: state.orderSeq || 0,
       shelfOrder: state.shelfOrder || {},
+      stallSlots: normalizeStallSlots(state.stallSlots),
       servicePaused: state.servicePaused,
       /* 营业中进度 */
       queue: state.queue,
@@ -7459,6 +7680,7 @@ function loadGame() {
   state.orderSeq = Math.max(0, Number(data.orderSeq)
     || (state.orders.length ? state.orders[state.orders.length - 1].id : 0));
   state.shelfOrder = data.shelfOrder && typeof data.shelfOrder === "object" ? data.shelfOrder : {};
+  state.stallSlots = normalizeStallSlots(data.stallSlots);
   state.backOwnedOnly = false;
   state.servicePaused = !!data.servicePaused;
   state.servingCustomer = false;
@@ -8083,11 +8305,45 @@ els.strategyPanel.addEventListener("click", (event) => {
   }
 });
 
-/* 点击货架商品查看成色/卖相 */
+/* 点击货架商品查看成色/卖相；摆摊则点击格位打开右侧商品抽屉 */
 els.shelfWall.addEventListener("click", (event) => {
+  const slot = event.target.closest("[data-slot-index]");
+  if (isStallShop() && slot) {
+    openStallDrawer(Number(slot.dataset.slotIndex));
+    return;
+  }
   const item = event.target.closest(".shelf-item");
   if (!item) return;
   openGoodsModal(item.dataset.gid);
+});
+
+els.shelfWall.addEventListener("keydown", (event) => {
+  if (!isStallShop() || (event.key !== "Enter" && event.key !== " ")) return;
+  const slot = event.target.closest("[data-slot-index]");
+  if (!slot) return;
+  event.preventDefault();
+  openStallDrawer(Number(slot.dataset.slotIndex));
+});
+
+els.stallDrawer.addEventListener("click", (event) => {
+  if (event.target === els.stallDrawer || event.target.closest("#stallDrawerClose")) {
+    closeStallDrawer();
+    return;
+  }
+  if (event.target.closest("[data-stall-clear]")) {
+    if (stallDrawerSlot !== null) clearStallSlot(stallDrawerSlot);
+    return;
+  }
+  const pick = event.target.closest("[data-stall-place]");
+  if (pick && stallDrawerSlot !== null) {
+    placeStallSlot(stallDrawerSlot, pick.dataset.stallPlace);
+  }
+});
+
+document.addEventListener("click", (event) => {
+  if (els.stallDrawer.hidden) return;
+  if (event.target.closest("#stallDrawer") || event.target.closest("[data-slot-index]")) return;
+  closeStallDrawer();
 });
 
 els.goodsModal.addEventListener("click", (event) => {
@@ -8425,7 +8681,8 @@ document.addEventListener("keydown", (event) => {
   if (!els.branchSwitchMenu.hidden) {
     els.branchSwitchMenu.hidden = true;
     els.branchSwitchBtn.setAttribute("aria-expanded", "false");
-  } else if (!els.goodsModal.hidden) closeGoodsModal();
+  } else if (!els.stallDrawer.hidden) closeStallDrawer();
+  else if (!els.goodsModal.hidden) closeGoodsModal();
   else if (!els.rulebookModal.hidden) els.rulebookModal.hidden = true;
   else if (!els.employeeModal.hidden) {
     els.employeeModal.hidden = true;

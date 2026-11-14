@@ -885,6 +885,7 @@ async function main() {
       };
 
       const catGoods = GOODS.filter((goods) => goods.cat === ownedGoods.cat).slice(0, 2);
+      state.size = "small";
       state.inventory[catGoods[0].id] = [{ qty: 2, cost: 100, dayIn: state.day, shelf: 3 }];
       state.inventory[catGoods[1].id] = [{ qty: 2, cost: 100, dayIn: state.day, shelf: 3 }];
       state.shelfOrder = { [ownedGoods.cat]: [catGoods[1].id, catGoods[0].id] };
@@ -902,6 +903,61 @@ async function main() {
         hasHint: els.displayPanel.textContent.includes("越靠前越好卖"),
       };
       state.shelfOrder = {};
+
+      /* 22.5 摆摊格位：默认 6 格全空，点击格位打开右侧抽屉，只有摆放的商品参与销售 */
+      const stallKeep = {
+        size: state.size,
+        slots: [...state.stallSlots],
+        suppressSave: state.suppressSave,
+        inv0: state.inventory[catGoods[0].id],
+        inv1: state.inventory[catGoods[1].id],
+      };
+      state.suppressSave = true;
+      state.size = "stall";
+      state.stallSlots = normalizeStallSlots([]);
+      renderShelf();
+      const emptySlots = els.shelfWall.querySelectorAll(".stall-slot.empty").length;
+      const slotCount = els.shelfWall.querySelectorAll("[data-slot-index]").length;
+
+      state.stallSlots = normalizeStallSlots([catGoods[0].id, catGoods[1].id]);
+      renderShelf();
+      const stallFront = shelfPositionFactor(catGoods[0]);
+      const stallBack = shelfPositionFactor(catGoods[1]);
+      const unplaced = GOODS.find((goods) => ![catGoods[0].id, catGoods[1].id].includes(goods.id)
+        && goodsUnlocked(goods));
+      const unplacedInv = unplaced ? state.inventory[unplaced.id] : undefined;
+      if (unplaced) state.inventory[unplaced.id] = [{ qty: 2, cost: 100, dayIn: state.day, shelf: 3 }];
+      const stallScored = scoreCandidates({ affinity: {}, traits: [], wealth: {} }, mulberry32(9)).scored
+        .map((item) => item.goods.id);
+      const unplacedSold = unplaced ? stallScored.includes(unplaced.id) : false;
+
+      openStallDrawer(1);
+      const drawerOpen = !els.stallDrawer.hidden;
+      const drawerButtons = els.stallDrawerList.querySelectorAll("[data-stall-place]").length;
+      placeStallSlot(1, unplaced.id);
+      checks.stallSlots = {
+        emptySlots,
+        slotCount,
+        stallFront,
+        stallBack,
+        frontBetter: stallFront > stallBack,
+        unplacedSold,
+        drawerOpen,
+        drawerButtons,
+        placedAfter: state.stallSlots[1] === unplaced.id,
+        drawerClosed: els.stallDrawer.hidden,
+      };
+
+      state.size = stallKeep.size;
+      state.stallSlots = stallKeep.slots;
+      state.suppressSave = stallKeep.suppressSave;
+      if (stallKeep.inv0 === undefined) delete state.inventory[catGoods[0].id]; else state.inventory[catGoods[0].id] = stallKeep.inv0;
+      if (stallKeep.inv1 === undefined) delete state.inventory[catGoods[1].id]; else state.inventory[catGoods[1].id] = stallKeep.inv1;
+      if (unplaced) {
+        if (unplacedInv === undefined) delete state.inventory[unplaced.id];
+        else state.inventory[unplaced.id] = unplacedInv;
+      }
+      renderShelf();
 
       checks.sizeTraffic = {
         values: SHOP_SIZES.map((size) => size.trafficMult),
@@ -1167,6 +1223,7 @@ async function main() {
   check("开局启动资金全为现金且无默认库存", data.emptyStart?.cash === 200000 && data.emptyStart?.inventoryEmpty && data.emptyStart?.backroomEmpty && data.emptyStart?.pricesSet, JSON.stringify(data.emptyStart));
   check("只看有库存商品筛选生效", data.ownedFilter?.owned === 1 && data.ownedFilter?.only && data.ownedFilter?.all > data.ownedFilter?.owned, JSON.stringify(data.ownedFilter));
   check("摆台顺序决定陈列位与售卖加成", data.displayOrder?.first && data.displayOrder?.effect && data.displayOrder?.rows === 2 && data.displayOrder?.hasHint && data.displayOrder?.frontFactor > data.displayOrder?.backFactor, JSON.stringify(data.displayOrder));
+  check("摆摊限制格位并可用抽屉摆放商品", data.stallSlots?.emptySlots === 6 && data.stallSlots?.slotCount === 6 && data.stallSlots?.frontBetter && data.stallSlots?.unplacedSold === false && data.stallSlots?.drawerOpen && data.stallSlots?.drawerButtons > 0 && data.stallSlots?.placedAfter && data.stallSlots?.drawerClosed, JSON.stringify(data.stallSlots));
   check("铺面越大客流系数越高", data.sizeTraffic?.ascending && data.sizeTraffic?.stall === 0.75 && data.sizeTraffic?.floor === 1.4, JSON.stringify(data.sizeTraffic));
   check("铺面规格切换店面样式", data.sizeStyle?.distinct && data.sizeStyle?.floor === "floor" && data.sizeStyle?.stall === "stall", JSON.stringify(data.sizeStyle));
   check("摆摊视角来客在上商品在下", data.stallLayout?.size === "stall" && data.stallLayout?.customerAbove && data.stallLayout?.goodsInScene && data.stallLayout?.stageInScene, JSON.stringify(data.stallLayout));
