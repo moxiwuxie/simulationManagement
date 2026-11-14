@@ -3307,15 +3307,21 @@ function stockedDisplayGoods() {
   return displayedGoods().filter((goods) => shelfStockOf(goods.id) > 0);
 }
 
-/* 格位顺序影响购买概率：最前 +12%，最后 -12%；只有有货的格位参与排位。 */
+/* 当前铺面每排格位数：与前台货架布局保持一致 */
+function slotColumns() {
+  if (window.innerWidth <= 620 && state.size === "small") return 3;
+  if (state.size === "large") return 5;
+  if (state.size === "floor") return 6;
+  return 4;
+}
+
+/* 格位按排固定影响购买概率：第一排 +12%，第二排不变，第三排 -12%，更后排继续递减。 */
 function shelfPositionFactor(goods) {
-  const filled = normalizeDisplaySlots(state.displaySlots)
-    .filter((gid) => GOOD_INDEX[gid] && goodsUnlocked(GOOD_INDEX[gid]) && shelfStockOf(gid) > 0);
-  const index = filled.indexOf(goods.id);
+  const slots = normalizeDisplaySlots(state.displaySlots);
+  const index = slots.indexOf(goods.id);
   if (index < 0) return 1;
-  if (filled.length <= 1) return 1.04;
-  const t = index / (filled.length - 1);
-  return +(1.12 - 0.24 * t).toFixed(3);
+  const row = Math.floor((index % SHELF_PAGE_SIZE) / slotColumns());
+  return +clamp(1.12 - 0.12 * row, 0.64, 1.12).toFixed(3);
 }
 
 function slotPageCount() {
@@ -5295,7 +5301,7 @@ function renderDisplayPanel() {
   els.displayPanel.innerHTML = `
     <section class="strategy-group">
       <h3>🧺 ${size.name}格位 <small>${filled}/${slots.length} 已摆放</small></h3>
-      <p class="strategy-note">${size.name}共有 ${slots.length} 个商品格位，空格位不参与销售。格位越靠前越好卖：最前位 +12%，最后位 -12%；点击前场格位可打开右侧商品抽屉。</p>
+      <p class="strategy-note">${size.name}共有 ${slots.length} 个商品格位，空格位不参与销售。格位按排固定影响：第一排 +12%，第二排不变，第三排 -12%，更后排继续递减；点击前场格位可打开右侧商品抽屉。</p>
       <div class="display-list">
         ${slots.map((gid, index) => {
           const goods = GOOD_INDEX[gid];
@@ -5542,7 +5548,7 @@ const RULEBOOK = [
     "批量折扣：一次 ≥20 件 95 折、≥40 件 9 折",
     "进货先进入后台；点击前台格位可从抽屉把已进货商品上架并摆放，未摆进格位不会售卖",
     "上架后还要摆进格位才会售卖：摆摊 12 格、小门面 26 格、大门店 40 格、一整层 54 格，每页 12 格；点击前场格位从右侧抽屉摆放",
-    "格位越靠前越好卖：最前位 +12%，最后位 -12%；售罄格位会收起商品卡片，但点击仍可优先补摆上次的商品",
+    "格位按排固定影响：第一排 +12%，第二排不变，第三排 -12%，更后排继续递减；售罄格位会收起商品卡片，但点击仍可优先补摆上次的商品",
     "格位左上角的 × 可以把该商品收回后台并清空格位；后台放不下时会保留格位并提示余量",
     "台面与后台各有容量上限；后台囤货同样会腐损，别一次压太多",
     "补新货会让该商品卖相回升；到货量每天有限",
