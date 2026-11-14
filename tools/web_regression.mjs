@@ -873,6 +873,22 @@ async function main() {
         only: ownedBack.length === 1 && ownedBack[0].id === ownedGoods.id,
       };
 
+      /* 23. 上架状态筛选：已上架看台面库存，未上架看已进货但台面空 */
+      const backOnlyGoods = GOODS.find((goods) => goods.id !== ownedGoods.id && goodsUnlocked(goods));
+      state.backroom[backOnlyGoods.id] = [{ qty: 2, cost: 100, dayIn: state.day, shelf: 3 }];
+      state.inventory[backOnlyGoods.id] = [];
+      const shelvedList = filterGoodsList({ shelfState: "shelved" });
+      const unshelvedList = filterGoodsList({ shelfState: "unshelved" });
+      checks.shelfFilter = {
+        shelved: shelvedList.some((goods) => goods.id === ownedGoods.id)
+          && !shelvedList.some((goods) => goods.id === backOnlyGoods.id),
+        unshelved: unshelvedList.length === 1
+          && unshelvedList[0].id === backOnlyGoods.id
+          && !unshelvedList.some((goods) => goods.id === ownedGoods.id),
+        selects: !!document.getElementById("backShelfFilter") && !!document.getElementById("pricingShelfFilter"),
+      };
+      state.backroom[backOnlyGoods.id] = [];
+
       const catGoods = GOODS.filter((goods) => goods.cat === ownedGoods.cat).slice(0, 2);
       state.size = "small";
       state.inventory[catGoods[0].id] = [{ qty: 2, cost: 100, dayIn: state.day, shelf: 3 }];
@@ -1279,6 +1295,7 @@ async function main() {
   check("托管策略与订单写入存档", data.orderPersist?.style === "strict" && data.orderPersist?.capped && data.orderPersist?.orders === 300, JSON.stringify(data.orderPersist));
   check("开局启动资金全为现金且无默认库存", data.emptyStart?.cash === 200000 && data.emptyStart?.inventoryEmpty && data.emptyStart?.backroomEmpty && data.emptyStart?.pricesSet, JSON.stringify(data.emptyStart));
   check("只看有库存商品筛选生效", data.ownedFilter?.owned === 1 && data.ownedFilter?.only && data.ownedFilter?.all > data.ownedFilter?.owned, JSON.stringify(data.ownedFilter));
+  check("上架状态筛选区分已上架与未上架", data.shelfFilter?.shelved && data.shelfFilter?.unshelved && data.shelfFilter?.selects, JSON.stringify(data.shelfFilter));
   check("铺面格位按规格配置", data.slotSpec?.ascending && data.slotSpec?.stall === 12 && data.slotSpec?.small === 26 && data.slotSpec?.large === 40 && data.slotSpec?.floor === 54 && data.slotSpec?.smallPages === 3, JSON.stringify(data.slotSpec));
   check("格位可用抽屉上架摆放并影响售卖", data.displaySlots?.emptySlots === 12 && data.displaySlots?.slotCount === 12 && data.displaySlots?.stallFront === 1.12 && data.displaySlots?.stallBack === 1 && data.displaySlots?.stallThird === 0.88 && data.displaySlots?.frontBetter && data.displaySlots?.soldOutHidden && data.displaySlots?.soldOutSlot && data.displaySlots?.soldOutFirstMatch && data.displaySlots?.soldOutDisabled && data.displaySlots?.drawerCurrentFirst && data.displaySlots?.unplacedSold === false && data.displaySlots?.drawerOpen && data.displaySlots?.drawerButtons > 0 && data.displaySlots?.backroomListed && data.displaySlots?.autoStocked && data.displaySlots?.placedAfter && data.displaySlots?.removeButton && data.displaySlots?.unstocked && data.displaySlots?.slotCleared && data.displaySlots?.drawerClosed, JSON.stringify(data.displaySlots));
   check("商品类型与其他筛选分两行", data.filterRows?.direction === "column" && data.filterRows?.stacked && data.filterRows?.tabsWide && data.filterRows?.toolsWide, JSON.stringify(data.filterRows));

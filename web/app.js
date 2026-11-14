@@ -807,11 +807,14 @@ const state = {
   backOwnedOnly: false,
   /* 解锁状态筛选：all / unlocked / locked */
   backUnlock: "all",
+  /* 上架状态筛选：all / shelved / unshelved */
+  backShelfState: "all",
   /* 定价页的独立筛选 */
   pricingCat: "all",
   pricingQuery: "",
   pricingOwnedOnly: false,
   pricingUnlock: "all",
+  pricingShelfState: "all",
   mapMode: "start",
   pendingLoc: null,
   decor: { ...DEFAULT_DECOR },
@@ -1001,11 +1004,13 @@ const els = {
   pricingSearch: $("pricingSearch"),
   pricingUnlockFilter: $("pricingUnlockFilter"),
   pricingOwnedOnly: $("pricingOwnedOnly"),
+  pricingShelfFilter: $("pricingShelfFilter"),
   backTabs: $("backTabs"),
   backSearch: $("backSearch"),
   backUnlockFilter: $("backUnlockFilter"),
   backLowOnly: $("backLowOnly"),
   backOwnedOnly: $("backOwnedOnly"),
+  backShelfFilter: $("backShelfFilter"),
   backFillCat: $("backFillCat"),
   backViews: $("backViews"),
   goodsPanel: $("goodsPanel"),
@@ -5802,10 +5807,10 @@ function backTabGoods() {
 }
 
 /* 通用商品筛选：进货与定价两个页签共用同一套排序与解锁规则 */
-function filterGoodsList({ cat = "all", query = "", lowOnly = false, ownedOnly = false, unlock = "all" } = {}) {
+function filterGoodsList({ cat = "all", query = "", lowOnly = false, ownedOnly = false, unlock = "all", shelfState = "all" } = {}) {
   const keyword = String(query || "").trim().toLowerCase();
   /* 除「只看未解锁」外，任何窄筛选都不应把未解锁商品算进来 */
-  const narrowed = lowOnly || ownedOnly || !!keyword || cat !== "all";
+  const narrowed = lowOnly || ownedOnly || shelfState !== "all" || !!keyword || cat !== "all";
   return GOODS.filter((goods) => {
     if (cat !== "all" && goods.cat !== cat) return false;
     if (keyword && !goods.name.toLowerCase().includes(keyword) && !goods.id.toLowerCase().includes(keyword)) return false;
@@ -5813,6 +5818,9 @@ function filterGoodsList({ cat = "all", query = "", lowOnly = false, ownedOnly =
     if (narrowed && unlock === "all" && !unlocked) return false;
     if (lowOnly && stockOf(goods.id) > 0) return false;
     if (ownedOnly && totalStockOf(goods.id) <= 0) return false;
+    if (shelfState === "shelved" && shelfStockOf(goods.id) <= 0) return false;
+    /* 未上架 = 已进货但台面没有货；完全没进过货的商品不参与这个筛选 */
+    if (shelfState === "unshelved" && !(shelfStockOf(goods.id) <= 0 && backStockOf(goods.id) > 0)) return false;
     if (unlock === "unlocked" && !unlocked) return false;
     if (unlock === "locked" && unlocked) return false;
     return true;
@@ -5826,6 +5834,7 @@ function backFilteredGoods() {
     lowOnly: state.backLowOnly,
     ownedOnly: state.backOwnedOnly,
     unlock: state.backUnlock,
+    shelfState: state.backShelfState,
   });
 }
 
@@ -5835,6 +5844,7 @@ function pricingFilteredGoods() {
     query: state.pricingQuery,
     ownedOnly: state.pricingOwnedOnly,
     unlock: state.pricingUnlock,
+    shelfState: state.pricingShelfState,
   });
 }
 
@@ -5898,6 +5908,7 @@ function renderBackstage() {
   els.backLowOnly.checked = state.backLowOnly;
   els.backOwnedOnly.checked = state.backOwnedOnly;
   els.backUnlockFilter.value = state.backUnlock;
+  els.backShelfFilter.value = state.backShelfState;
   updateBackViewBadges();
 
   if (decorView) {
@@ -6019,6 +6030,7 @@ function renderPricingPanel(locked) {
   els.pricingTabs.innerHTML = categoryTabsMarkup(state.pricingCat);
   els.pricingOwnedOnly.checked = state.pricingOwnedOnly;
   els.pricingUnlockFilter.value = state.pricingUnlock;
+  els.pricingShelfFilter.value = state.pricingShelfState;
   if (document.activeElement !== els.pricingSearch) els.pricingSearch.value = state.pricingQuery;
   const list = pricingFilteredGoods();
   if (!list.length) {
@@ -7618,6 +7630,8 @@ function loadGame() {
     : /* 旧存档没有格位：把已在台面的商品按目录顺序迁移到格位 */
       normalizeDisplaySlots(GOODS.filter((goods) => shelfStockOf(goods.id) > 0).map((goods) => goods.id));
   state.backOwnedOnly = false;
+  state.backShelfState = "all";
+  state.pricingShelfState = "all";
   state.servicePaused = !!data.servicePaused;
   state.servingCustomer = false;
   state.queue = data.queue || [];
@@ -8101,6 +8115,11 @@ els.pricingUnlockFilter.addEventListener("change", () => {
   renderBackstage();
 });
 
+els.pricingShelfFilter.addEventListener("change", () => {
+  state.pricingShelfState = els.pricingShelfFilter.value || "all";
+  renderBackstage();
+});
+
 els.backTabs.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-cat]");
   if (!button) return;
@@ -8306,6 +8325,11 @@ els.backOwnedOnly.addEventListener("change", () => {
 
 els.backUnlockFilter.addEventListener("change", () => {
   state.backUnlock = els.backUnlockFilter.value || "all";
+  renderBackstage();
+});
+
+els.backShelfFilter.addEventListener("change", () => {
+  state.backShelfState = els.backShelfFilter.value || "all";
   renderBackstage();
 });
 
