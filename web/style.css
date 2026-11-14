@@ -3417,6 +3417,13 @@ body.backstage-open .toast {
 .settle-actions .primary { flex: 1; }
 .settle-actions .ghost-btn { white-space: nowrap; }
 
+/* 按截图反馈移除的装饰与状态图标：地面道具、台秤、收银机、事件与自检胶囊 */
+#floorProps,
+.counter-front .scale,
+.counter-front .register,
+#eventChip,
+#checkPill { display: none !important; }
+
 /* ---------- 响应式 ---------- */
 @media (max-width: 1100px) {
   .kpis { gap: 12px; }
