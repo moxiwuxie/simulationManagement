@@ -1625,9 +1625,9 @@ main.store {
 
 .ledger-toolbar {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
   padding: 9px 24px;
   border-bottom: 1px solid var(--line);
   background: #fbf6ea;
@@ -1637,7 +1637,8 @@ main.store {
   display: flex;
   align-items: center;
   gap: 4px;
-  flex: 1;
+  flex: none;
+  width: 100%;
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
@@ -1663,7 +1664,7 @@ main.store {
 .back-tab:hover { background: #f2e8d3; }
 .back-tab.on { background: var(--ink); border-color: var(--ink); color: var(--cream); }
 
-.back-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.back-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; width: 100%; }
 
 .back-tools input[type="search"] {
   width: 124px;
@@ -4165,6 +4166,14 @@ body.backstage-open .toast {
   color: var(--ink-soft);
 }
 
+.stall-slot.empty.is-out {
+  border-color: #e6bdb4;
+  background: #fbeee9;
+}
+
+.stall-slot.empty.is-out .stall-plus,
+.stall-slot.empty.is-out small { color: var(--warn); }
+
 /* 格位顺序即摆台位次：右上角显示售卖概率增减 */
 .stall-pos {
   position: absolute;
@@ -4269,30 +4278,6 @@ body.backstage-open .toast {
   padding: 10px;
 }
 
-.stall-current {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border: 1px solid #bcd8c8;
-  border-radius: 9px;
-  background: #eef6f0;
-  font-size: 11px;
-}
-
-.stall-current span { color: var(--ink-soft); }
-.stall-current b {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-}
-.stall-current em { font-style: normal; font-variant-numeric: tabular-nums; }
-.stall-current .ok { color: var(--ok); }
-.stall-current .bad { color: var(--warn); }
-
 .stall-clear {
   padding: 4px 8px;
   border: 1px solid #e6bdb4;
@@ -4304,6 +4289,7 @@ body.backstage-open .toast {
 }
 
 .stall-clear:hover { background: #fbeee9; }
+.stall-clear-row { align-self: flex-start; flex: none; }
 
 .stall-pick {
   display: grid;
@@ -4321,6 +4307,24 @@ body.backstage-open .toast {
 
 .stall-pick:hover { border-color: var(--wood); background: #fffdf6; }
 .stall-pick:focus-visible { outline: 2px solid var(--tomato); outline-offset: 1px; }
+.stall-pick:disabled { opacity: 0.55; cursor: not-allowed; }
+.stall-pick:disabled:hover { border-color: var(--line); background: #fff; }
+
+.stall-pick-current {
+  border-color: #dfcfad;
+  background: #fffdf6;
+}
+
+.stall-last {
+  margin-left: 5px;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 400;
+  color: var(--ink-soft);
+}
 
 .stall-pick .good-icon {
   width: 32px;

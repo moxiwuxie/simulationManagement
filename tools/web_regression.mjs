@@ -923,6 +923,23 @@ async function main() {
       renderShelf();
       const stallFront = shelfPositionFactor(catGoods[0]);
       const stallBack = shelfPositionFactor(catGoods[1]);
+
+      /* 售罄格位收起商品卡片；点击后上次摆放的商品排在抽屉第一位 */
+      const soldOutInv = state.inventory[catGoods[0].id];
+      const soldOutBack = state.backroom[catGoods[0].id];
+      state.inventory[catGoods[0].id] = [];
+      delete state.backroom[catGoods[0].id];
+      renderShelf();
+      const soldOutHidden = !els.shelfWall.querySelector('[data-gid="' + catGoods[0].id + '"]');
+      const soldOutSlot = !!els.shelfWall.querySelector(".stall-slot.empty.is-out");
+      openStallDrawer(0);
+      const soldOutFirst = els.stallDrawerList.querySelector("[data-stall-place]");
+      const soldOutFirstMatch = soldOutFirst?.dataset.stallPlace === catGoods[0].id;
+      const soldOutDisabled = !!soldOutFirst?.disabled;
+      state.inventory[catGoods[0].id] = soldOutInv;
+      if (soldOutBack === undefined) delete state.backroom[catGoods[0].id]; else state.backroom[catGoods[0].id] = soldOutBack;
+      renderShelf();
+
       const unplaced = GOODS.find((goods) => ![catGoods[0].id, catGoods[1].id].includes(goods.id)
         && goodsUnlocked(goods));
       const unplacedInv = unplaced ? state.inventory[unplaced.id] : undefined;
@@ -933,6 +950,8 @@ async function main() {
 
       openStallDrawer(1);
       const drawerOpen = !els.stallDrawer.hidden;
+      const drawerFirst = els.stallDrawerList.querySelector("[data-stall-place]");
+      const drawerCurrentFirst = drawerFirst?.dataset.stallPlace === catGoods[1].id;
       const drawerButtons = els.stallDrawerList.querySelectorAll("[data-stall-place]").length;
       placeStallSlot(1, unplaced.id);
       checks.stallSlots = {
@@ -941,6 +960,11 @@ async function main() {
         stallFront,
         stallBack,
         frontBetter: stallFront > stallBack,
+        soldOutHidden,
+        soldOutSlot,
+        soldOutFirstMatch,
+        soldOutDisabled,
+        drawerCurrentFirst,
         unplacedSold,
         drawerOpen,
         drawerButtons,
@@ -958,6 +982,21 @@ async function main() {
         else state.inventory[unplaced.id] = unplacedInv;
       }
       renderShelf();
+
+      /* 22.6 进货/定价筛选：品类单独一行，其余筛选另起一行 */
+      state.backView = "goods";
+      state.phase = "prep";
+      openBackstage();
+      renderBackstage();
+      const filterBar = els.backTabs.parentElement;
+      const tabsBox = els.backTabs.getBoundingClientRect();
+      const toolsBox = els.backTabs.nextElementSibling.getBoundingClientRect();
+      checks.filterRows = {
+        direction: getComputedStyle(filterBar).flexDirection,
+        stacked: toolsBox.top >= tabsBox.bottom - 1,
+        tabsWide: tabsBox.width >= filterBar.clientWidth * 0.6,
+        toolsWide: toolsBox.width >= filterBar.clientWidth * 0.6,
+      };
 
       checks.sizeTraffic = {
         values: SHOP_SIZES.map((size) => size.trafficMult),
@@ -1223,7 +1262,8 @@ async function main() {
   check("开局启动资金全为现金且无默认库存", data.emptyStart?.cash === 200000 && data.emptyStart?.inventoryEmpty && data.emptyStart?.backroomEmpty && data.emptyStart?.pricesSet, JSON.stringify(data.emptyStart));
   check("只看有库存商品筛选生效", data.ownedFilter?.owned === 1 && data.ownedFilter?.only && data.ownedFilter?.all > data.ownedFilter?.owned, JSON.stringify(data.ownedFilter));
   check("摆台顺序决定陈列位与售卖加成", data.displayOrder?.first && data.displayOrder?.effect && data.displayOrder?.rows === 2 && data.displayOrder?.hasHint && data.displayOrder?.frontFactor > data.displayOrder?.backFactor, JSON.stringify(data.displayOrder));
-  check("摆摊限制格位并可用抽屉摆放商品", data.stallSlots?.emptySlots === 6 && data.stallSlots?.slotCount === 6 && data.stallSlots?.frontBetter && data.stallSlots?.unplacedSold === false && data.stallSlots?.drawerOpen && data.stallSlots?.drawerButtons > 0 && data.stallSlots?.placedAfter && data.stallSlots?.drawerClosed, JSON.stringify(data.stallSlots));
+  check("摆摊限制格位并可用抽屉摆放商品", data.stallSlots?.emptySlots === 6 && data.stallSlots?.slotCount === 6 && data.stallSlots?.frontBetter && data.stallSlots?.soldOutHidden && data.stallSlots?.soldOutSlot && data.stallSlots?.soldOutFirstMatch && data.stallSlots?.soldOutDisabled && data.stallSlots?.drawerCurrentFirst && data.stallSlots?.unplacedSold === false && data.stallSlots?.drawerOpen && data.stallSlots?.drawerButtons > 0 && data.stallSlots?.placedAfter && data.stallSlots?.drawerClosed, JSON.stringify(data.stallSlots));
+  check("商品类型与其他筛选分两行", data.filterRows?.direction === "column" && data.filterRows?.stacked && data.filterRows?.tabsWide && data.filterRows?.toolsWide, JSON.stringify(data.filterRows));
   check("铺面越大客流系数越高", data.sizeTraffic?.ascending && data.sizeTraffic?.stall === 0.75 && data.sizeTraffic?.floor === 1.4, JSON.stringify(data.sizeTraffic));
   check("铺面规格切换店面样式", data.sizeStyle?.distinct && data.sizeStyle?.floor === "floor" && data.sizeStyle?.stall === "stall", JSON.stringify(data.sizeStyle));
   check("摆摊视角来客在上商品在下", data.stallLayout?.size === "stall" && data.stallLayout?.customerAbove && data.stallLayout?.goodsInScene && data.stallLayout?.stageInScene, JSON.stringify(data.stallLayout));

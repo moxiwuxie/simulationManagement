@@ -3331,7 +3331,7 @@ function shelfRankOf(goods) {
 function shelfPositionFactor(goods) {
   if (isStallShop()) {
     const filled = normalizeStallSlots(state.stallSlots)
-      .filter((gid) => GOOD_INDEX[gid] && goodsUnlocked(GOOD_INDEX[gid]));
+      .filter((gid) => GOOD_INDEX[gid] && goodsUnlocked(GOOD_INDEX[gid]) && shelfStockOf(gid) > 0);
     const index = filled.indexOf(goods.id);
     if (index < 0) return 1;
     if (filled.length <= 1) return 1.04;
@@ -3396,11 +3396,12 @@ function shelfItemMarkup(goods, { slotIndex = -1 } = {}) {
 
 function stallSlotMarkup(gid, index) {
   const goods = GOOD_INDEX[gid];
-  if (!goods) {
-    return `<button type="button" class="stall-slot empty" data-slot-index="${index}"
-      aria-label="第 ${index + 1} 格空位，点击摆放商品">
+  if (!goods || shelfStockOf(gid) <= 0) {
+    /* 售罄格位不展示商品，但格位仍记住上次摆放的商品，点击可优先补摆 */
+    return `<button type="button" class="stall-slot empty${goods ? " is-out" : ""}" data-slot-index="${index}"
+      aria-label="第 ${index + 1} 格${goods ? "缺货" : "空位"}，点击摆放商品">
       <span class="stall-plus">＋</span>
-      <small>第 ${index + 1} 格</small>
+      <small>第 ${index + 1} 格${goods ? " · 缺货" : ""}</small>
     </button>`;
   }
   return shelfItemMarkup(goods, { slotIndex: index });
@@ -3460,6 +3461,9 @@ function renderStallDrawer() {
   const slots = normalizeStallSlots(state.stallSlots);
   const currentGid = slots[index] || null;
   const current = currentGid ? GOOD_INDEX[currentGid] : null;
+  const currentStock = current ? shelfStockOf(current.id) : 0;
+  const currentBack = current ? backStockOf(current.id) : 0;
+  const currentReady = !!current && (currentStock > 0 || currentBack > 0);
   const taken = new Set(slots.filter((gid, i) => gid && i !== index));
   const goodsList = GOODS.filter((goods) => goodsUnlocked(goods)
     && goods.id !== currentGid
@@ -3467,26 +3471,32 @@ function renderStallDrawer() {
     && shelfStockOf(goods.id) > 0);
   els.stallDrawerTitle.textContent = `第 ${index + 1} 格`;
   els.stallDrawerSub.textContent = current
-    ? `${current.name} · 台面 ${shelfStockOf(current.id)} ${current.unit}`
+    ? `${current.name} · 台面 ${currentStock} ${current.unit}${currentBack > 0 ? ` · 后台 ${currentBack}` : ""}`
     : "点击商品摆到这一格";
-  const pct = current ? Math.round((shelfPositionFactor(current) - 1) * 100) : 0;
+  const currentRow = current ? `
+    <button type="button" class="stall-pick stall-pick-current" data-stall-place="${current.id}" ${currentReady ? "" : "disabled"}>
+      ${iconMarkup(current)}
+      <span class="stall-pick-main">
+        <b>${current.name}<em class="stall-last">上次摆放</em></b>
+        <small>${currentStock > 0
+          ? `台面 ${currentStock} ${current.unit}${currentBack > 0 ? ` · 后台 ${currentBack}` : ""}`
+          : currentBack > 0 ? `台面缺货 · 后台 ${currentBack}，点击自动补摆` : "已售罄，先去后台补货上架"}</small>
+      </span>
+      <em>${currentStock > 0 ? "当前" : currentBack > 0 ? "补摆" : "缺货"}</em>
+    </button>` : "";
+  const otherRows = goodsList.map((goods) => `
+    <button type="button" class="stall-pick" data-stall-place="${goods.id}">
+      ${iconMarkup(goods)}
+      <span class="stall-pick-main">
+        <b>${goods.name}</b>
+        <small>台面 ${shelfStockOf(goods.id)} ${goods.unit} · 后台 ${backStockOf(goods.id)}</small>
+      </span>
+      <em>¥${yuan(effectivePrice(goods))}</em>
+    </button>`).join("");
   els.stallDrawerList.innerHTML = `
-    ${current ? `
-      <div class="stall-current">
-        <span>当前格位</span>
-        <b>${current.name}</b>
-        <em class="${pct >= 0 ? "ok" : "bad"}">${pct >= 0 ? "+" : ""}${pct}%</em>
-        <button type="button" class="stall-clear" data-stall-clear>清空</button>
-      </div>` : ""}
-    ${goodsList.length ? goodsList.map((goods) => `
-      <button type="button" class="stall-pick" data-stall-place="${goods.id}">
-        ${iconMarkup(goods)}
-        <span class="stall-pick-main">
-          <b>${goods.name}</b>
-          <small>台面 ${shelfStockOf(goods.id)} ${goods.unit} · 后台 ${backStockOf(goods.id)}</small>
-        </span>
-        <em>¥${yuan(effectivePrice(goods))}</em>
-      </button>`).join("") : `<p class="stall-drawer-empty">${current ? "暂时没有其他可摆放的商品。" : "台面没有可摆放的商品，先到后台进货并上架。"}</p>`}
+    ${current ? `<button type="button" class="stall-clear stall-clear-row" data-stall-clear>清空第 ${index + 1} 格</button>` : ""}
+    ${currentRow}
+    ${goodsList.length ? otherRows : `<p class="stall-drawer-empty">${current ? "暂时没有其他可摆放的商品。" : "台面没有可摆放的商品，先到后台进货并上架。"}</p>`}
   `;
 }
 
@@ -3507,6 +3517,8 @@ function closeStallDrawer() {
 function placeStallSlot(index, gid) {
   const goods = GOOD_INDEX[gid];
   if (!goods || !isStallShop()) return;
+  const restocked = shelfStockOf(gid) <= 0 && backStockOf(gid) > 0;
+  if (restocked) moveToShelf(gid, "fill");
   if (shelfStockOf(gid) <= 0) {
     toast(`${goods.name}台面没货，先去后台补货上架`);
     return;
@@ -3518,7 +3530,7 @@ function placeStallSlot(index, gid) {
   state.stallSlots = slots;
   persistPrep();
   renderShelf();
-  toast(`${goods.name}已摆到第 ${index + 1} 格`);
+  toast(`${goods.name}已摆到第 ${index + 1} 格${restocked ? "（已从后台补货）" : ""}`);
 }
 
 function clearStallSlot(index) {
@@ -3536,6 +3548,14 @@ function updateShelfItem(gid) {
   const el = els.shelfWall.querySelector(`[data-gid="${gid}"]`);
   if (!goods || !el) return;
   const stock = shelfStockOf(gid);
+  /* 摆摊格位售罄后立即收起商品卡片，但格位仍记住上次摆放的商品 */
+  if (isStallShop() && stock <= 0) {
+    const slotIndex = Number(el.dataset.slotIndex);
+    if (Number.isInteger(slotIndex) && slotIndex >= 0) {
+      el.outerHTML = stallSlotMarkup(state.stallSlots[slotIndex], slotIndex);
+    }
+    return;
+  }
   const back = backStockOf(gid);
   el.classList.toggle("sold-out", stock <= 0);
   const stockEl = el.querySelector(".shelf-stock");
@@ -5304,12 +5324,13 @@ function renderDisplayPanel() {
                 </div>`;
             }
             const pct = Math.round((shelfPositionFactor(goods) - 1) * 100);
+            const stock = shelfStockOf(goods.id);
             return `
               <div class="display-row">
                 <span class="display-rank">${index + 1}</span>
                 <b>${goods.name}</b>
-                <span>台面 ${shelfStockOf(goods.id)} ${goods.unit}</span>
-                <em class="${pct >= 0 ? "ok" : "bad"}">${pct >= 0 ? "+" : ""}${pct}%</em>
+                <span>台面 ${stock} ${goods.unit}${stock > 0 ? "" : " · 缺货"}</span>
+                <em class="${stock > 0 ? (pct >= 0 ? "ok" : "bad") : "bad"}">${stock > 0 ? `${pct >= 0 ? "+" : ""}${pct}%` : "缺货"}</em>
                 <span></span>
               </div>`;
           }).join("")}
