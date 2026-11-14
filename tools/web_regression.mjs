@@ -947,6 +947,11 @@ async function main() {
         ? [...els.stallDrawerList.querySelectorAll("[data-stall-place]")].some((button) => button.dataset.stallPlace === unplaced.id)
         : false;
       placeStallSlot(1, unplaced.id);
+      const autoStocked = unplaced ? shelfStockOf(unplaced.id) > 0 : false;
+      const placedAfter = state.displaySlots[1] === unplaced.id;
+      const removeButton = els.shelfWall.querySelector('[data-slot-remove="1"]');
+      const hasRemove = !!removeButton;
+      if (removeButton) removeButton.click();
       checks.displaySlots = {
         emptySlots,
         slotCount,
@@ -962,8 +967,11 @@ async function main() {
         drawerOpen,
         drawerButtons,
         backroomListed,
-        autoStocked: unplaced ? shelfStockOf(unplaced.id) > 0 : false,
-        placedAfter: state.displaySlots[1] === unplaced.id,
+        autoStocked,
+        placedAfter,
+        removeButton: hasRemove,
+        unstocked: unplaced ? backStockOf(unplaced.id) > 0 : false,
+        slotCleared: state.displaySlots[1] === null,
         drawerClosed: els.stallDrawer.hidden,
       };
 
@@ -1262,7 +1270,7 @@ async function main() {
   check("开局启动资金全为现金且无默认库存", data.emptyStart?.cash === 200000 && data.emptyStart?.inventoryEmpty && data.emptyStart?.backroomEmpty && data.emptyStart?.pricesSet, JSON.stringify(data.emptyStart));
   check("只看有库存商品筛选生效", data.ownedFilter?.owned === 1 && data.ownedFilter?.only && data.ownedFilter?.all > data.ownedFilter?.owned, JSON.stringify(data.ownedFilter));
   check("铺面格位按规格配置", data.slotSpec?.ascending && data.slotSpec?.stall === 12 && data.slotSpec?.small === 26 && data.slotSpec?.large === 40 && data.slotSpec?.floor === 54 && data.slotSpec?.smallPages === 3, JSON.stringify(data.slotSpec));
-  check("格位可用抽屉上架摆放并影响售卖", data.displaySlots?.emptySlots === 12 && data.displaySlots?.slotCount === 12 && data.displaySlots?.frontBetter && data.displaySlots?.soldOutHidden && data.displaySlots?.soldOutSlot && data.displaySlots?.soldOutFirstMatch && data.displaySlots?.soldOutDisabled && data.displaySlots?.drawerCurrentFirst && data.displaySlots?.unplacedSold === false && data.displaySlots?.drawerOpen && data.displaySlots?.drawerButtons > 0 && data.displaySlots?.backroomListed && data.displaySlots?.autoStocked && data.displaySlots?.placedAfter && data.displaySlots?.drawerClosed, JSON.stringify(data.displaySlots));
+  check("格位可用抽屉上架摆放并影响售卖", data.displaySlots?.emptySlots === 12 && data.displaySlots?.slotCount === 12 && data.displaySlots?.frontBetter && data.displaySlots?.soldOutHidden && data.displaySlots?.soldOutSlot && data.displaySlots?.soldOutFirstMatch && data.displaySlots?.soldOutDisabled && data.displaySlots?.drawerCurrentFirst && data.displaySlots?.unplacedSold === false && data.displaySlots?.drawerOpen && data.displaySlots?.drawerButtons > 0 && data.displaySlots?.backroomListed && data.displaySlots?.autoStocked && data.displaySlots?.placedAfter && data.displaySlots?.removeButton && data.displaySlots?.unstocked && data.displaySlots?.slotCleared && data.displaySlots?.drawerClosed, JSON.stringify(data.displaySlots));
   check("商品类型与其他筛选分两行", data.filterRows?.direction === "column" && data.filterRows?.stacked && data.filterRows?.tabsWide && data.filterRows?.toolsWide, JSON.stringify(data.filterRows));
   check("铺面越大客流系数越高", data.sizeTraffic?.ascending && data.sizeTraffic?.stall === 0.75 && data.sizeTraffic?.floor === 1.4, JSON.stringify(data.sizeTraffic));
   check("铺面规格切换店面样式", data.sizeStyle?.distinct && data.sizeStyle?.floor === "floor" && data.sizeStyle?.stall === "stall", JSON.stringify(data.sizeStyle));

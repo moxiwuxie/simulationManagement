@@ -3342,9 +3342,13 @@ function shelfItemMarkup(goods, { slotIndex = -1 } = {}) {
   const slotBadge = slot
     ? `<span class="stall-pos ${pct >= 0 ? "up" : "down"}">${pct >= 0 ? "+" : ""}${pct}%</span>`
     : "";
+  const removeButton = slot
+    ? `<button type="button" class="slot-remove" data-slot-remove="${slotIndex}" title="下架商品" aria-label="下架 ${goods.name}">×</button>`
+    : "";
   return `
     <article class="shelf-item ${stock > 0 ? "" : "sold-out"}" data-gid="${goods.id}"${slotAttrs}>
       ${slotBadge}
+      ${removeButton}
       ${iconMarkup(goods)}
       <div class="shelf-main">
         <div class="shelf-name">${goods.name}</div>
@@ -3480,6 +3484,35 @@ function placeStallSlot(index, gid) {
   persistPrep();
   renderShelf();
   toast(`${goods.name}已摆到第 ${index + 1} 格${restocked ? "（已从后台上架）" : ""}`);
+}
+
+function unstockSlot(index) {
+  const slots = normalizeDisplaySlots(state.displaySlots);
+  const gid = slots[index];
+  const goods = gid ? GOOD_INDEX[gid] : null;
+  if (!goods) return;
+  if (state.phase === "settle") {
+    toast("已经打烊，明天再下架");
+    return;
+  }
+  const result = moveToBackroom(gid, "fill");
+  if (!result.moved) {
+    StallAudio.decline();
+    toast(result.room <= 0 ? "后台已经放满了" : "台面没有可下架的货");
+    return;
+  }
+  const leftShelf = shelfStockOf(gid);
+  /* 台面全部收走才清空格位；后台放不下时保留格位，避免库存悬空 */
+  if (leftShelf <= 0) slots[index] = null;
+  state.displaySlots = slots;
+  StallAudio.tap();
+  logLine(`下架 ${goods.name} ×${result.moved}${goods.unit}，后台 ${backStockOf(gid)}/${backCapOf(goods)}`, "good");
+  toast(`下架 ${goods.name} ×${result.moved}${goods.unit}${leftShelf > 0 ? `，后台已满，余 ${leftShelf}${goods.unit}留在台面` : ""}`);
+  renderHud();
+  renderShelf();
+  if (!els.backstage.hidden) renderBackstage();
+  if (state.phase === "open") saveGame();
+  else persistPrep();
 }
 
 function clearStallSlot(index) {
@@ -5510,6 +5543,7 @@ const RULEBOOK = [
     "进货先进入后台；点击前台格位可从抽屉把已进货商品上架并摆放，未摆进格位不会售卖",
     "上架后还要摆进格位才会售卖：摆摊 12 格、小门面 26 格、大门店 40 格、一整层 54 格，每页 12 格；点击前场格位从右侧抽屉摆放",
     "格位越靠前越好卖：最前位 +12%，最后位 -12%；售罄格位会收起商品卡片，但点击仍可优先补摆上次的商品",
+    "格位左上角的 × 可以把该商品收回后台并清空格位；后台放不下时会保留格位并提示余量",
     "台面与后台各有容量上限；后台囤货同样会腐损，别一次压太多",
     "补新货会让该商品卖相回升；到货量每天有限",
     "采购员在开门前按策略自动进货，并顺手把能摆的货补到台面；花费受现金余额限制",
@@ -8175,6 +8209,11 @@ els.strategyPanel.addEventListener("click", (event) => {
 
 /* 点击格位打开右侧商品抽屉；点击格内商品仍可查看详情 */
 els.shelfWall.addEventListener("click", (event) => {
+  const remove = event.target.closest("[data-slot-remove]");
+  if (remove) {
+    unstockSlot(Number(remove.dataset.slotRemove));
+    return;
+  }
   const slot = event.target.closest("[data-slot-index]");
   if (slot) {
     openStallDrawer(Number(slot.dataset.slotIndex));
@@ -8187,6 +8226,7 @@ els.shelfWall.addEventListener("click", (event) => {
 
 els.shelfWall.addEventListener("keydown", (event) => {
   if (event.key !== "Enter" && event.key !== " ") return;
+  if (event.target.closest("[data-slot-remove]")) return;
   const slot = event.target.closest("[data-slot-index]");
   if (!slot) return;
   event.preventDefault();

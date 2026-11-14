@@ -4197,6 +4197,37 @@ body.backstage-open .toast {
   color: var(--warn);
 }
 
+.slot-remove {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid #e6bdb4;
+  border-radius: 50%;
+  background: #fffdf6;
+  color: var(--warn);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.82;
+}
+
+.slot-remove:hover {
+  opacity: 1;
+  background: #fbeee9;
+  border-color: var(--warn);
+}
+
+.slot-remove:focus-visible {
+  outline: 2px solid var(--tomato);
+  outline-offset: 1px;
+}
+
 .shelf-item.sold-out .stall-pos { display: none; }
 
 /* 右侧商品抽屉 */
