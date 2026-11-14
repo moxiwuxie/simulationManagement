@@ -807,7 +807,7 @@ const state = {
   backOwnedOnly: false,
   /* 解锁状态筛选：all / unlocked / locked */
   backUnlock: "all",
-  /* 定价上架页的独立筛选 */
+  /* 定价页的独立筛选 */
   pricingCat: "all",
   pricingQuery: "",
   pricingOwnedOnly: false,
@@ -1001,7 +1001,6 @@ const els = {
   pricingSearch: $("pricingSearch"),
   pricingUnlockFilter: $("pricingUnlockFilter"),
   pricingOwnedOnly: $("pricingOwnedOnly"),
-  pricingStockCat: $("pricingStockCat"),
   backTabs: $("backTabs"),
   backSearch: $("backSearch"),
   backUnlockFilter: $("backUnlockFilter"),
@@ -1148,7 +1147,7 @@ function iconMarkup(goods, extraClass = "") {
 }
 
 /* ---------------- 库存与账务 ---------------- */
-/* 台面库存用于销售；后台库存用于囤货，需先上架才能卖。 */
+/* 台面库存用于销售；后台库存用于囤货，需通过格位抽屉上架才能卖。 */
 function shelfStockOf(gid) {
   return (state.inventory[gid] || []).reduce((sum, lot) => sum + lot.qty, 0);
 }
@@ -3413,11 +3412,11 @@ function renderStallDrawer() {
   const goodsList = GOODS.filter((goods) => goodsUnlocked(goods)
     && goods.id !== currentGid
     && !taken.has(goods.id)
-    && shelfStockOf(goods.id) > 0);
+    && (shelfStockOf(goods.id) > 0 || backStockOf(goods.id) > 0));
   els.stallDrawerTitle.textContent = `第 ${index + 1} 格`;
   els.stallDrawerSub.textContent = current
     ? `上次摆放：${current.name} · 台面 ${currentStock} ${current.unit}${currentBack > 0 ? ` · 后台 ${currentBack}` : ""}`
-    : "点击商品摆到这一格";
+    : "选择已进货商品，上架并摆到这一格";
   const currentRow = current ? `
     <button type="button" class="stall-pick stall-pick-current" data-stall-place="${current.id}" ${currentReady ? "" : "disabled"}>
       ${iconMarkup(current)}
@@ -3425,22 +3424,28 @@ function renderStallDrawer() {
         <b>${current.name}<em class="stall-last">上次摆放</em></b>
         <small>${currentStock > 0
           ? `台面 ${currentStock} ${current.unit}${currentBack > 0 ? ` · 后台 ${currentBack}` : ""}`
-          : currentBack > 0 ? `台面缺货 · 后台 ${currentBack}，点击自动补摆` : "已售罄，先去后台补货上架"}</small>
+          : currentBack > 0 ? `后台 ${currentBack} ${current.unit} · 点击上架并补摆` : "已售罄，先去后台进货"}</small>
       </span>
-      <em>${currentStock > 0 ? "当前" : currentBack > 0 ? "补摆" : "缺货"}</em>
+      <em>${currentStock > 0 ? "当前" : currentBack > 0 ? "上架" : "缺货"}</em>
     </button>` : "";
-  const otherRows = goodsList.map((goods) => `
+  const otherRows = goodsList.map((goods) => {
+    const shelf = shelfStockOf(goods.id);
+    const back = backStockOf(goods.id);
+    return `
     <button type="button" class="stall-pick" data-stall-place="${goods.id}">
       ${iconMarkup(goods)}
       <span class="stall-pick-main">
         <b>${goods.name}</b>
-        <small>台面 ${shelfStockOf(goods.id)} ${goods.unit} · 后台 ${backStockOf(goods.id)}</small>
+        <small>${shelf > 0
+          ? `台面 ${shelf} ${goods.unit}${back > 0 ? ` · 后台 ${back}` : ""}`
+          : `后台 ${back} ${goods.unit} · 点击上架`}</small>
       </span>
-      <em>¥${yuan(effectivePrice(goods))}</em>
-    </button>`).join("");
+      <em>${shelf > 0 ? `¥${yuan(effectivePrice(goods))}` : "上架"}</em>
+    </button>`;
+  }).join("");
   els.stallDrawerList.innerHTML = `
     ${currentRow}
-    ${goodsList.length ? otherRows : `<p class="stall-drawer-empty">${current ? "暂时没有其他可摆放的商品。" : "台面没有可摆放的商品，先到后台进货并上架。"}</p>`}
+    ${goodsList.length ? otherRows : `<p class="stall-drawer-empty">${current ? "暂时没有其他可摆放的商品。" : "后台还没有已进货商品，先去「进货」页下单。"}</p>`}
     ${current ? `<button type="button" class="stall-clear stall-clear-row" data-stall-clear>清空第 ${index + 1} 格</button>` : ""}
   `;
 }
@@ -3474,7 +3479,7 @@ function placeStallSlot(index, gid) {
   state.displaySlots = slots;
   persistPrep();
   renderShelf();
-  toast(`${goods.name}已摆到第 ${index + 1} 格${restocked ? "（已从后台补货）" : ""}`);
+  toast(`${goods.name}已摆到第 ${index + 1} 格${restocked ? "（已从后台上架）" : ""}`);
 }
 
 function clearStallSlot(index) {
@@ -3659,7 +3664,7 @@ function renderPhase() {
       return;
     }
     els.phaseLabel.textContent = "准备中";
-    els.phaseHint.textContent = "开门前可补货、定价、上架；营业中只接待顾客，不能进货。";
+    els.phaseHint.textContent = "开门前可补货、定价、点击前场格位上架；营业中只接待顾客，不能进货。";
     els.primaryBtn.textContent = "开门营业";
     els.primaryBtn.disabled = false;
     els.sceneTip.hidden = false;
@@ -5502,7 +5507,7 @@ const RULEBOOK = [
   { group: "采购", items: [
     "批发行情每天按品类波动 ±12%，低价日适合囤货",
     "批量折扣：一次 ≥20 件 95 折、≥40 件 9 折",
-    "进货先进入后台，必须在后台点「上架」才能摆到台面售卖",
+    "进货先进入后台；点击前台格位可从抽屉把已进货商品上架并摆放，未摆进格位不会售卖",
     "上架后还要摆进格位才会售卖：摆摊 12 格、小门面 26 格、大门店 40 格、一整层 54 格，每页 12 格；点击前场格位从右侧抽屉摆放",
     "格位越靠前越好卖：最前位 +12%，最后位 -12%；售罄格位会收起商品卡片，但点击仍可优先补摆上次的商品",
     "台面与后台各有容量上限；后台囤货同样会腐损，别一次压太多",
@@ -5923,7 +5928,6 @@ function ledgerRowMarkup(goods, { locked, mode }) {
   const canRestockBase = canPlayerRestock() && !isLocked && back < backCapOf(goods) && state.cash >= unit;
   const canRestock = canRestockBase && left > 0;
   const canFillBack = canRestockBase;
-  const canStock = state.phase !== "settle" && back > 0 && shelf < capOf(goods);
   const canUnshelf = state.phase !== "settle" && shelf > 0 && back < backCapOf(goods);
   const rates = spoilageRates(goods);
   const low = shelf <= 1;
@@ -5945,7 +5949,6 @@ function ledgerRowMarkup(goods, { locked, mode }) {
           <button type="button" data-act="restock" data-gid="${goods.id}" data-qty="fill" ${canFillBack ? "" : "disabled"} title="按后台容量补满，立即入库，不受当日额度限制">进满</button>
         </div>`
     : `<div class="ledger-restock">
-          <button type="button" class="shelf-btn" data-act="shelf" data-gid="${goods.id}" data-qty="fill" ${canStock ? "" : "disabled"}>上架</button>
           <button type="button" class="shelf-btn unshelf-btn" data-act="unshelf" data-gid="${goods.id}" data-qty="fill" ${canUnshelf ? "" : "disabled"}>下架</button>
         </div>`;
   return `
@@ -5971,14 +5974,12 @@ function ledgerRowMarkup(goods, { locked, mode }) {
       </div>`;
 }
 
-/* 定价上架页：只处理售价与台面，不再混入进货按钮 */
+/* 定价页：只处理售价与下架；上架已移到前台格位 */
 function renderPricingPanel(locked) {
   els.pricingTabs.innerHTML = categoryTabsMarkup(state.pricingCat);
   els.pricingOwnedOnly.checked = state.pricingOwnedOnly;
   els.pricingUnlockFilter.value = state.pricingUnlock;
   if (document.activeElement !== els.pricingSearch) els.pricingSearch.value = state.pricingQuery;
-  els.pricingStockCat.textContent = state.pricingCat === "all" ? "全部上架" : "本类上架";
-  els.pricingStockCat.disabled = state.phase === "settle";
   const list = pricingFilteredGoods();
   if (!list.length) {
     els.pricingList.innerHTML = `<div class="ledger-empty">没有符合条件的商品。</div>`;
@@ -6376,39 +6377,6 @@ function unshelf(goods, wanted = "fill") {
   else persistPrep();
 }
 
-/* 当前筛选下的商品一键补满台面 */
-function stockCategory(cat = state.backCat) {
-  if (state.phase === "settle") {
-    toast("已经打烊，明天再上架");
-    return;
-  }
-  const list = GOODS.filter((goods) => cat === "all" || goods.cat === cat);
-  /* 批量上架：当前标签页内所有商品都补到台面容量上限 */
-  let units = 0;
-  let count = 0;
-  for (const goods of list) {
-    const result = moveToShelf(goods.id, "fill");
-    if (result.moved > 0) {
-      units += result.moved;
-      count += 1;
-    }
-  }
-  if (!count) {
-    StallAudio.decline();
-    toast("后台没有可上架的货");
-    return;
-  }
-  StallAudio.tap();
-  const label = cat === "all" ? "全部" : cat;
-  logLine(`台面补货 ${label}：${count} 种 / ${units} 件`, "good");
-  toast(`已上架 ${count} 种 / ${units} 件`);
-  renderHud();
-  renderShelf();
-  renderBackstage();
-  if (state.phase === "open") saveGame();
-  else persistPrep();
-}
-
 function fillCategory() {
   if (!canPlayerRestock()) {
     StallAudio.decline();
@@ -6481,8 +6449,6 @@ function handleLedgerClick(event) {
     changePrice(goods, Number(button.dataset.delta));
   } else if (button.dataset.act === "restock") {
     restock(goods, button.dataset.qty);
-  } else if (button.dataset.act === "shelf") {
-    stockShelf(goods, button.dataset.qty);
   } else if (button.dataset.act === "unshelf") {
     unshelf(goods, button.dataset.qty);
   }
@@ -8071,7 +8037,6 @@ els.ledgerList.addEventListener("change", handleLedgerChange);
 els.pricingList.addEventListener("click", handleLedgerClick);
 els.pricingList.addEventListener("change", handleLedgerChange);
 els.backFillCat.addEventListener("click", fillCategory);
-els.pricingStockCat.addEventListener("click", () => stockCategory(state.pricingCat));
 
 els.pricingTabs.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-cat]");

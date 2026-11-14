@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>阿福蔬果 · 小店模拟器</title>
-<link rel="stylesheet" href="style.css?v=78">
+<link rel="stylesheet" href="style.css?v=79">
 </head>
 <body>
   <header class="topbar">
@@ -100,7 +100,7 @@
         <div id="customerStage" class="customer-stage">
           <div class="empty-state">
             <p>店门半开，等第一位客人。</p>
-            <span>先去后台进货、上架、定价，再点「开门营业」。</span>
+            <span>先去后台进货、定价，再点前台格位上架摆放。</span>
           </div>
         </div>
         <div id="queueStrip" class="queue-strip" hidden></div>
@@ -136,7 +136,7 @@
         </div>
       </div>
 
-      <div id="sceneTip" class="scene-tip">先到后台进货、上架、定价，再开门营业。</div>
+      <div id="sceneTip" class="scene-tip">先到后台进货、定价，再点前台格位上架摆放。</div>
       <div id="shutter" class="shutter" aria-hidden="true"></div>
       <div id="phaseBanner" class="phase-banner" aria-hidden="true"></div>
     </section>
@@ -165,13 +165,13 @@
     <header class="backstage-head">
       <div>
         <h2>后台管理</h2>
-        <p>营业前把货、价、店面都定好；进货进后台，上架后台货才能售卖。营业中也能维护商品，但会占用一名空闲员工。</p>
+        <p>营业前把货、价、店面都定好；进货进后台，点击前台格位即可上架并摆放。营业中也能维护商品，但会占用一名空闲员工。</p>
       </div>
       <button id="backstageClose" class="ghost-btn" type="button">返回店面</button>
     </header>
     <div id="backViews" class="back-views" role="tablist" aria-label="后台模块">
       <button type="button" data-view="goods" class="on">进货</button>
-      <button type="button" data-view="pricing">定价上架</button>
+      <button type="button" data-view="pricing">定价</button>
       <button type="button" data-view="display">摆台陈列</button>
       <button type="button" data-view="decor">店铺装修</button>
       <button type="button" data-view="strategy">经营策略</button>
@@ -213,12 +213,11 @@
             <option value="locked">只看未解锁</option>
           </select>
           <label class="low-toggle"><input id="pricingOwnedOnly" type="checkbox"> 只看有库存</label>
-          <button id="pricingStockCat" class="ghost-btn" type="button">本类上架</button>
         </div>
       </div>
       <div class="ledger-table">
         <div class="ledger-cols">
-          <span>商品</span><span>台面 / 后台</span><span>售价</span><span>上架</span>
+          <span>商品</span><span>台面 / 后台</span><span>售价</span><span>下架</span>
         </div>
         <div id="pricingList" class="ledger-list"></div>
       </div>
@@ -231,7 +230,7 @@
     <div id="ordersPanel" class="strategy-panel" hidden></div>
     <div id="growthPanel" class="strategy-panel" hidden></div>
     <footer class="backstage-foot">
-      <p>这里定的是基准价：雨天部分品类会自动上浮（各店型不同），晚市后半段进入清仓全场 5 折；售价不得低于进价 5%。打烊后或开门前都可以进货，下单即入后台；营业中不能进货，只做定价、上架与接待。台面与后台都有容量上限，后台囤货同样会腐损。</p>
+      <p>这里定的是基准价：雨天部分品类会自动上浮（各店型不同），晚市后半段进入清仓全场 5 折；售价不得低于进价 5%。打烊后或开门前都可以进货，下单即入后台；营业中不能进货，只做定价、下架与接待。上架请点击前台格位完成。台面与后台都有容量上限，后台囤货同样会腐损。</p>
       <button id="quitBizBtn" class="ghost-btn danger" type="button">退出经营</button>
     </footer>
   </aside>
@@ -422,8 +421,8 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-  <script src="catalog.js?v=78"></script>
+  <script src="catalog.js?v=79"></script>
   <script src="audio.js?v=72"></script>
-  <script src="app.js?v=78"></script>
+  <script src="app.js?v=79"></script>
 </body>
 </html>

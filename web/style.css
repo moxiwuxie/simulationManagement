@@ -3125,7 +3125,7 @@ body.backstage-open .toast {
 
 #goodsPanel[hidden] { display: none; }
 
-/* 定价上架页与进货页共用同一套可滚动布局，避免内容撑出后台抽屉 */
+/* 定价页与进货页共用同一套可滚动布局，避免内容撑出后台抽屉 */
 #pricingPanel {
   flex: 1;
   min-height: 0;
