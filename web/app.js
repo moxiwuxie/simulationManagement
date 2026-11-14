@@ -5592,12 +5592,15 @@ function backTabGoods() {
 
 function backFilteredGoods() {
   const query = state.backQuery.trim().toLowerCase();
+  /* 除「只看未解锁」外，任何窄筛选都不应把未解锁商品算进来 */
+  const narrowed = state.backLowOnly || state.backOwnedOnly || !!query || state.backCat !== "all";
   return GOODS.filter((goods) => {
     if (state.backCat !== "all" && goods.cat !== state.backCat) return false;
     if (query && !goods.name.toLowerCase().includes(query) && !goods.id.toLowerCase().includes(query)) return false;
+    const unlocked = goodsUnlocked(goods);
+    if (narrowed && state.backUnlock === "all" && !unlocked) return false;
     if (state.backLowOnly && stockOf(goods.id) > 0) return false;
     if (state.backOwnedOnly && totalStockOf(goods.id) <= 0) return false;
-    const unlocked = goodsUnlocked(goods);
     if (state.backUnlock === "unlocked" && !unlocked) return false;
     if (state.backUnlock === "locked" && unlocked) return false;
     return true;

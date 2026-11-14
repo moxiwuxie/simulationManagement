@@ -922,6 +922,16 @@ async function main() {
       state.backUnlock = "locked";
       const onlyLocked = backFilteredGoods();
       state.backUnlock = "all";
+      const lockedGood = allBack.find((goods) => !goodsUnlocked(goods));
+      state.backLowOnly = true;
+      const lowOnlyFiltered = backFilteredGoods();
+      state.backLowOnly = false;
+      state.backCat = lockedGood ? lockedGood.cat : "all";
+      const catFiltered = backFilteredGoods();
+      state.backCat = "all";
+      state.backQuery = lockedGood ? lockedGood.name : "不存在的商品";
+      const searchFiltered = backFilteredGoods();
+      state.backQuery = "";
       checks.backUnlock = {
         total: allBack.length,
         unlockedCount,
@@ -929,6 +939,9 @@ async function main() {
         sorted: firstLocked === -1 || firstLocked > lastUnlocked,
         onlyUnlocked: onlyUnlocked.length === unlockedCount && onlyUnlocked.every((goods) => goodsUnlocked(goods)),
         onlyLocked: onlyLocked.length === allBack.length - unlockedCount && onlyLocked.every((goods) => !goodsUnlocked(goods)),
+        lowOnlyNoLocked: !!lockedGood && lowOnlyFiltered.every((goods) => goodsUnlocked(goods)),
+        categoryNoLocked: !!lockedGood && catFiltered.every((goods) => goodsUnlocked(goods)),
+        searchNoLocked: !!lockedGood && searchFiltered.every((goods) => goodsUnlocked(goods)),
       };
 
       /* 24. 进满按后台容量补满并立即入库，不受当日额度限制 */
@@ -1099,7 +1112,7 @@ async function main() {
   check("摆台顺序决定陈列位与售卖加成", data.displayOrder?.first && data.displayOrder?.effect && data.displayOrder?.rows === 2 && data.displayOrder?.hasHint && data.displayOrder?.frontFactor > data.displayOrder?.backFactor, JSON.stringify(data.displayOrder));
   check("铺面越大客流系数越高", data.sizeTraffic?.ascending && data.sizeTraffic?.stall === 0.75 && data.sizeTraffic?.floor === 1.4, JSON.stringify(data.sizeTraffic));
   check("铺面规格切换店面样式", data.sizeStyle?.distinct && data.sizeStyle?.floor === "floor" && data.sizeStyle?.stall === "stall", JSON.stringify(data.sizeStyle));
-  check("解锁状态筛选且未解锁沉底", data.backUnlock?.lockedCount > 0 && data.backUnlock?.sorted && data.backUnlock?.onlyUnlocked && data.backUnlock?.onlyLocked, JSON.stringify(data.backUnlock));
+  check("解锁状态筛选且未解锁沉底", data.backUnlock?.lockedCount > 0 && data.backUnlock?.sorted && data.backUnlock?.onlyUnlocked && data.backUnlock?.onlyLocked && data.backUnlock?.lowOnlyNoLocked && data.backUnlock?.categoryNoLocked && data.backUnlock?.searchNoLocked, JSON.stringify(data.backUnlock));
   check("进满补满后台并立即入库", data.fillBackroom?.full && data.fillBackroom?.delayed === undefined && data.fillBackroom?.qty === data.fillBackroom?.cap, JSON.stringify(data.fillBackroom));
   check("进货只在打烊后开放", data.restockTiming?.prepBlocked && data.restockTiming?.settleAllowed && data.restockTiming?.firstDayAllowed && data.restockTiming?.settleButton && data.restockTiming?.settleOpened, JSON.stringify(data.restockTiming));
   check("开门与拉闸过场生效", data.shopFx?.closeFx?.closing && data.shopFx?.closeFx?.banner === "拉闸下班" && data.shopFx?.closeFx?.shutter && data.shopFx?.openFx?.opening && data.shopFx?.openFx?.banner === "开门营业", JSON.stringify(data.shopFx));
