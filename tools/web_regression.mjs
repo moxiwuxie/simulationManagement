@@ -934,7 +934,28 @@ async function main() {
         onlyLocked: onlyLocked.length === allBack.length - unlockedCount && onlyLocked.every((goods) => !goodsUnlocked(goods)),
       };
 
-      /* 24. 开局空库存：启动资金全部为现金 */
+      /* 24. 进满按后台容量补满并立即入库，不受当日额度限制 */
+      const fillGoods = GOODS.find((goods) => goods.tier === 1);
+      const fillGid = fillGoods.id;
+      state.size = "small";
+      state.cash = 1000000;
+      state.backroom[fillGid] = [];
+      state.inventory[fillGid] = [];
+      state.shipments = [];
+      state.supplyQuota[fillGid] = 1;
+      state.supplyUsed[fillGid] = 5;
+      const fillCap = backCapOf(fillGoods);
+      const fillBuy = applyRestock(fillGoods, "fill", { fullBackroom: true, immediate: true });
+      checks.fillBackroom = {
+        cap: fillCap,
+        qty: fillBuy.qty,
+        back: backStockOf(fillGid),
+        transit: shipmentQtyOf(fillGid),
+        delayed: fillBuy.delayed,
+        full: fillBuy.qty === fillCap && backStockOf(fillGid) === fillCap && shipmentQtyOf(fillGid) === 0,
+      };
+
+      /* 25. 开局空库存：启动资金全部为现金 */
       state.cash = 200000;
       state.inventory = {};
       state.backroom = {};
@@ -948,7 +969,7 @@ async function main() {
         pricesSet: GOODS.every((goods) => state.prices[goods.id] === goods.base),
       };
 
-      /* 24. 选址确认即时扣首日租金，且不再默认配货 */      state.mapMode = "start";
+      /* 25. 选址确认即时扣首日租金，且不再默认配货 */      state.mapMode = "start";
       state.shopType = "fruit";
       state.pendingSize = "stall";
       state.pendingLoc = LOCATIONS[0];
@@ -1045,6 +1066,7 @@ async function main() {
   check("铺面越大客流系数越高", data.sizeTraffic?.ascending && data.sizeTraffic?.stall === 0.75 && data.sizeTraffic?.floor === 1.4, JSON.stringify(data.sizeTraffic));
   check("铺面规格切换店面样式", data.sizeStyle?.distinct && data.sizeStyle?.floor === "floor" && data.sizeStyle?.stall === "stall", JSON.stringify(data.sizeStyle));
   check("解锁状态筛选且未解锁沉底", data.backUnlock?.lockedCount > 0 && data.backUnlock?.sorted && data.backUnlock?.onlyUnlocked && data.backUnlock?.onlyLocked, JSON.stringify(data.backUnlock));
+  check("进满补满后台并立即入库", data.fillBackroom?.full && data.fillBackroom?.delayed === false && data.fillBackroom?.qty === data.fillBackroom?.cap, JSON.stringify(data.fillBackroom));
   check("选址确认即时扣首日租金且不配货", data.openingCharge?.dayRent === data.openingCharge?.rent && data.openingCharge?.paidDay === 1 && data.openingCharge?.charged && data.openingCharge?.inventoryEmpty, JSON.stringify(data.openingCharge));
 
   const layouts = {};

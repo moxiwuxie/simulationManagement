@@ -5715,7 +5715,9 @@ function renderBackstage() {
       : "";
     const unlock = goodsUnlockState(goods);
     const isLocked = !unlock.unlocked;
-    const canRestock = !locked && !isLocked && left > 0 && back + transit < backCapOf(goods) && state.cash >= unit;
+    const canRestockBase = !locked && !isLocked && back + transit < backCapOf(goods) && state.cash >= unit;
+    const canRestock = canRestockBase && left > 0;
+    const canFillBack = canRestockBase;
     const canStock = state.phase !== "settle" && back > 0 && shelf < capOf(goods);
     const canUnshelf = state.phase !== "settle" && shelf > 0 && back + transit < backCapOf(goods);
     const rates = spoilageRates(goods);
@@ -5749,7 +5751,7 @@ function renderBackstage() {
         <div class="ledger-restock">
           <button type="button" data-act="restock" data-gid="${goods.id}" data-qty="4" ${canRestock ? "" : "disabled"}>进 4</button>
           <button type="button" data-act="restock" data-gid="${goods.id}" data-qty="10" ${canRestock ? "" : "disabled"}>进 10</button>
-          <button type="button" data-act="restock" data-gid="${goods.id}" data-qty="fill" ${canRestock ? "" : "disabled"}>进满</button>
+          <button type="button" data-act="restock" data-gid="${goods.id}" data-qty="fill" ${canFillBack ? "" : "disabled"} title="按后台容量补满，立即入库，不受当日额度限制">进满</button>
           <button type="button" class="shelf-btn" data-act="shelf" data-gid="${goods.id}" data-qty="fill" ${canStock ? "" : "disabled"}>上架</button>
           <button type="button" class="shelf-btn unshelf-btn" data-act="unshelf" data-gid="${goods.id}" data-qty="fill" ${canUnshelf ? "" : "disabled"}>下架</button>
         </div>
@@ -6011,7 +6013,7 @@ function closeBackstage() {
   document.body.classList.remove("backstage-open");
 }
 
-function applyRestock(goods, wanted) {
+function applyRestock(goods, wanted, options = {}) {
   /* 未解锁的菜品不参与进货，自动补货也会跳过 */
   const unlock = goodsUnlockState(goods);
   if (!unlock.unlocked) return { qty: 0, cost: 0, room: 0, left: 0, unit: unitCost(goods), supplier: supplierOf().name, locked: true };
@@ -6021,7 +6023,12 @@ function applyRestock(goods, wanted) {
   /* 进货只占后台仓容：台面库存不计入，在途货物已占用则先扣掉 */
   const room = Math.max(0, backCapOf(goods) - backStockOf(goods.id) - shipmentQtyOf(goods.id));
   const affordable = Math.floor(state.cash / Math.max(1, unit));
-  const cap = Math.min(left, room, affordable);
+  /* 单品的「进满」按后台容量补满，不受当日额度限制，并直接入库；
+   * 普通进货与按类补货仍受渠道额度约束。 */
+  const fullBackroom = options.fullBackroom === true;
+  const cap = fullBackroom
+    ? Math.min(room, affordable)
+    : Math.min(left, room, affordable);
   let qty = wanted === "fill" ? cap : Math.min(Number(wanted) || 0, cap);
   /* 暴雨天货源不稳：有概率少发一部分，模拟物流受阻 */
   let shorted = 0;
@@ -6051,7 +6058,7 @@ function applyRestock(goods, wanted) {
     : supplier.quality;
   let delayed = false;
   let eta = 0;
-  if (qty >= BULK_SHIPPING_QTY) {
+  if (qty >= BULK_SHIPPING_QTY && !options.immediate) {
     /* 大额进货走物流：先扣款，10–30 秒后到后台 */
     delayed = true;
     eta = shippingDelayMs(qty);
@@ -6127,7 +6134,9 @@ function restock(goods, wanted) {
     toast("营业中不能进货");
     return;
   }
-  const result = applyRestock(goods, wanted);
+  const result = applyRestock(goods, wanted, wanted === "fill"
+    ? { fullBackroom: true, immediate: true }
+    : {});
   if (result.qty <= 0) {
     StallAudio.decline();
     if (result.locked) {
