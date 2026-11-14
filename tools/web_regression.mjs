@@ -909,7 +909,32 @@ async function main() {
       };
       state.size = "small";
 
-      /* 23. 开局空库存：启动资金全部为现金 */
+      /* 23. 解锁状态筛选：未解锁沉底 */
+      state.history = [];
+      state.backCat = "all";
+      state.backQuery = "";
+      state.backLowOnly = false;
+      state.backOwnedOnly = false;
+      state.backUnlock = "all";
+      const allBack = backFilteredGoods();
+      const unlockedCount = allBack.filter((goods) => goodsUnlocked(goods)).length;
+      const lastUnlocked = allBack.map((goods) => goodsUnlocked(goods)).lastIndexOf(true);
+      const firstLocked = allBack.findIndex((goods) => !goodsUnlocked(goods));
+      state.backUnlock = "unlocked";
+      const onlyUnlocked = backFilteredGoods();
+      state.backUnlock = "locked";
+      const onlyLocked = backFilteredGoods();
+      state.backUnlock = "all";
+      checks.backUnlock = {
+        total: allBack.length,
+        unlockedCount,
+        lockedCount: allBack.length - unlockedCount,
+        sorted: firstLocked === -1 || firstLocked > lastUnlocked,
+        onlyUnlocked: onlyUnlocked.length === unlockedCount && onlyUnlocked.every((goods) => goodsUnlocked(goods)),
+        onlyLocked: onlyLocked.length === allBack.length - unlockedCount && onlyLocked.every((goods) => !goodsUnlocked(goods)),
+      };
+
+      /* 24. 开局空库存：启动资金全部为现金 */
       state.cash = 200000;
       state.inventory = {};
       state.backroom = {};
@@ -923,7 +948,7 @@ async function main() {
         pricesSet: GOODS.every((goods) => state.prices[goods.id] === goods.base),
       };
 
-      /* 23. 选址确认即时扣首日租金，且不再默认配货 */      state.mapMode = "start";
+      /* 24. 选址确认即时扣首日租金，且不再默认配货 */      state.mapMode = "start";
       state.shopType = "fruit";
       state.pendingSize = "stall";
       state.pendingLoc = LOCATIONS[0];
@@ -1019,6 +1044,7 @@ async function main() {
   check("摆台顺序决定陈列位与售卖加成", data.displayOrder?.first && data.displayOrder?.effect && data.displayOrder?.rows === 2 && data.displayOrder?.hasHint && data.displayOrder?.frontFactor > data.displayOrder?.backFactor, JSON.stringify(data.displayOrder));
   check("铺面越大客流系数越高", data.sizeTraffic?.ascending && data.sizeTraffic?.stall === 0.75 && data.sizeTraffic?.floor === 1.4, JSON.stringify(data.sizeTraffic));
   check("铺面规格切换店面样式", data.sizeStyle?.distinct && data.sizeStyle?.floor === "floor" && data.sizeStyle?.stall === "stall", JSON.stringify(data.sizeStyle));
+  check("解锁状态筛选且未解锁沉底", data.backUnlock?.lockedCount > 0 && data.backUnlock?.sorted && data.backUnlock?.onlyUnlocked && data.backUnlock?.onlyLocked, JSON.stringify(data.backUnlock));
   check("选址确认即时扣首日租金且不配货", data.openingCharge?.dayRent === data.openingCharge?.rent && data.openingCharge?.paidDay === 1 && data.openingCharge?.charged && data.openingCharge?.inventoryEmpty, JSON.stringify(data.openingCharge));
 
   const layouts = {};

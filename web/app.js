@@ -817,6 +817,8 @@ const state = {
   backQuery: "",
   backLowOnly: false,
   backOwnedOnly: false,
+  /* 解锁状态筛选：all / unlocked / locked */
+  backUnlock: "all",
   mapMode: "start",
   pendingLoc: null,
   decor: { ...DEFAULT_DECOR },
@@ -998,6 +1000,7 @@ const els = {
   ledgerList: $("ledgerList"),
   backTabs: $("backTabs"),
   backSearch: $("backSearch"),
+  backUnlockFilter: $("backUnlockFilter"),
   backSupplier: $("backSupplier"),
   backLowOnly: $("backLowOnly"),
   backOwnedOnly: $("backOwnedOnly"),
@@ -5583,8 +5586,11 @@ function backFilteredGoods() {
     if (query && !goods.name.toLowerCase().includes(query) && !goods.id.toLowerCase().includes(query)) return false;
     if (state.backLowOnly && stockOf(goods.id) > 0) return false;
     if (state.backOwnedOnly && totalStockOf(goods.id) <= 0) return false;
+    const unlocked = goodsUnlocked(goods);
+    if (state.backUnlock === "unlocked" && !unlocked) return false;
+    if (state.backUnlock === "locked" && unlocked) return false;
     return true;
-  });
+  }).sort((a, b) => Number(goodsUnlocked(b)) - Number(goodsUnlocked(a)));
 }
 
 function renderBackTabs() {
@@ -5640,6 +5646,7 @@ function renderBackstage() {
   });
   els.backLowOnly.checked = state.backLowOnly;
   els.backOwnedOnly.checked = state.backOwnedOnly;
+  els.backUnlockFilter.value = state.backUnlock;
   updateBackViewBadges();
 
   if (decorView) {
@@ -8008,6 +8015,11 @@ els.backLowOnly.addEventListener("change", () => {
 
 els.backOwnedOnly.addEventListener("change", () => {
   state.backOwnedOnly = els.backOwnedOnly.checked;
+  renderBackstage();
+});
+
+els.backUnlockFilter.addEventListener("change", () => {
+  state.backUnlock = els.backUnlockFilter.value || "all";
   renderBackstage();
 });
 
