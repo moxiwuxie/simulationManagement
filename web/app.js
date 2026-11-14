@@ -792,6 +792,8 @@ const state = {
   phase: "prep",
   speed: 2,
   dayRent: 0,
+  /* 首日租金已在选址确认时扣除，避免开局当天重复计租 */
+  rentPaidDay: 0,
   daySpoilage: 0,
   dayRevenue: 0,
   dayCogs: 0,
@@ -845,6 +847,8 @@ const state = {
   /* 历史订单：最近 300 单，用于汇总与复盘 */
   orders: [],
   orderSeq: 0,
+  /* 历史订单筛选：all 或 "起始-结束" 经营天数区间 */
+  orderRange: "all",
   slot: null,
   clearance: false,
   condition: {},
@@ -1682,10 +1686,16 @@ function startDay() {
   }
 
   const rentDue = Math.round(loc.rent * sizeOf().rentMult);
-  const rent = Math.min(state.cash, rentDue);
-  state.cash -= rent;
-  state.dayRent = rent;
-  if (rent < rentDue) state.reputation = clamp(state.reputation - 0.4, 1, 5);
+  let rent = rentDue;
+  if (state.rentPaidDay === state.day) {
+    /* 开店确认时已即时扣除首日租金，这里只记账不重复扣款 */
+    state.dayRent = rentDue;
+  } else {
+    rent = Math.min(state.cash, rentDue);
+    state.cash -= rent;
+    state.dayRent = rent;
+    if (rent < rentDue) state.reputation = clamp(state.reputation - 0.4, 1, 5);
+  }
 
   /* 水电杂费：每天固定支出，施工日照付 */
   const utilityDue = utilityCost();
@@ -5020,7 +5030,19 @@ function renderGrowthPanel() {
 
 /* ---------------- 历史订单：汇总 + 最近流水 ---------------- */
 function renderOrdersPanel() {
-  const orders = Array.isArray(state.orders) ? state.orders : [];
+  const allOrders = Array.isArray(state.orders) ? state.orders : [];
+  /* 按经营天数分页：1-31、32-62 … 选中区间只看该段订单 */
+  const maxDay = Math.max(state.day || 1, ...allOrders.map((order) => Number(order.day) || 1), 1);
+  const ranges = [];
+  for (let from = 1; from <= maxDay; from += 31) {
+    const to = Math.min(from + 30, maxDay);
+    ranges.push({ from, to, key: `${from}-${to}` });
+  }
+  const activeRange = state.orderRange || "all";
+  const [rangeFrom, rangeTo] = activeRange.split("-").map(Number);
+  const orders = activeRange === "all" || !Number.isFinite(rangeFrom) || !Number.isFinite(rangeTo)
+    ? allOrders
+    : allOrders.filter((order) => order.day >= rangeFrom && order.day <= rangeTo);
   const totalRevenue = orders.reduce((sum, order) => sum + (order.revenue || 0), 0);
   const totalCogs = orders.reduce((sum, order) => sum + (order.cogs || 0), 0);
   const totalProfit = totalRevenue - totalCogs;
@@ -5045,11 +5067,16 @@ function renderOrdersPanel() {
     <section class="strategy-group">
       <h3>🧾 历史订单汇总 <small>保留最近 ${MAX_ORDER_HISTORY} 单</small></h3>
       <div class="strategy-market">
-        <span>累计订单 ${orders.length} 单</span>
+        <span>本范围订单 ${orders.length} 单</span>
         <span>总收入 ${money(totalRevenue)}</span>
         <span>总成本 ${money(totalCogs)}</span>
         <span class="${totalProfit >= 0 ? "down" : "up"}">总毛利 ${signed(totalProfit)}</span>
         <span>客单价 ${money(avgTicket)}</span>
+      </div>
+      <div class="order-range" role="group" aria-label="按经营天数筛选">
+        <button type="button" data-order-range="all" class="${activeRange === "all" ? "on" : ""}">全部</button>
+        ${ranges.map((range) => `
+          <button type="button" data-order-range="${range.key}" class="${activeRange === range.key ? "on" : ""}">第 ${range.from}–${range.to} 天</button>`).join("")}
       </div>
       <p class="strategy-note">${orders.length ? "每笔成交按实收金额与进价成本记账，抹零与赠品成本同样计入。" : "还没有成交订单。开门营业后，每笔成交都会记在这里。"}</p>
     </section>
@@ -6310,7 +6337,7 @@ function renderMap() {
     <div class="detail-cash">
       <span>启动资金</span>
       <b>${money(mapType.startCash)}</b>
-      <small>含开业配货：现金 + 库存合计，配货从资金中扣除</small>
+      <small>全部为现金，不含默认库存；确认开店时即时扣除首日租金</small>
     </div>` : ""}
     <div class="detail-meters">
       <div class="meter"><span>人流</span><i><b style="width:${trafficPct}%"></b></i><em>${selected.traffic.toFixed(2)}×</em></div>
@@ -6347,8 +6374,9 @@ function renderMap() {
   }).join("");
 
   if (state.mapMode === "start") {
-    els.mapFootNote.textContent = "开业当天开始计租（摆摊免租），租金每天结算。菜品分基础/进阶/精品，按经营天数与累计净利逐步解锁。";
-    els.mapConfirm.textContent = "在这里开店";
+    const startRent = Math.round(selected.rent * pendSize.rentMult);
+    els.mapFootNote.textContent = `确认开店时立即扣除首日租金 ${startRent > 0 ? money(startRent) : "（免租）"}；铺摊免租，水电与员工工资按日结算。菜品分基础/进阶/精品，按经营天数与累计净利逐步解锁。`;
+    els.mapConfirm.textContent = startRent > 0 ? `在这里开店 · ${money(startRent)}` : "在这里开店 · 免租";
   } else if (isCurrent) {
     const size = SHOP_SIZES.find((s) => s.id === state.pendingSize) || sizeOf();
     if (size.id === state.size) {
@@ -6395,15 +6423,21 @@ function confirmLocation() {
     state.size = size.id;
     state.location = loc;
     state.booted = true;
-    /* 按类型重置启动资金 */
+    /* 按类型重置启动资金，并即时扣除首日租金 */
     state.cash = type.startCash;
     state.baseWealth = type.startCash;
+    const openingRent = Math.round(loc.rent * size.rentMult);
+    state.cash -= openingRent;
+    state.dayRent = openingRent;
+    state.rentPaidDay = 1;
     els.mapOverlay.hidden = true;
     seedInitialStock();
     saveGame();
     StallAudio.openShop();
     startDay();
-    toast(`${loc.name} · ${state.shopName} · ${size.name} 开业！`);
+    toast(openingRent > 0
+      ? `${loc.name} · ${state.shopName} · ${size.name} 开业！首日租金 ${money(openingRent)}`
+      : `${loc.name} · ${state.shopName} · ${size.name} 开业！`);
     return;
   }
 
@@ -6996,23 +7030,7 @@ function seedInitialStock() {
   state.quitLiquidation = 0;
   state.quitBranchLiquidation = 0;
   state.quitShortfall = 0;
-  const starterRng = mulberry32(hashSeed(state.seed + 3, 1));
-  /* 只配发开局已解锁的基础菜品，避免开局就出现锁着的库存 */
-  const starters = GOODS.filter((goods) => goodsUnlocked(goods));
-  for (const goods of starters) {
-    /* 开局配货按真实进价入账：现金减少额 = 货值增加额 */
-    const unit = unitCost(goods);
-    /* 开局每种 3 件：2 件摆台面，1 件放后台，兼顾现金流与上架体验 */
-    const shelfQty = 2;
-    const backQty = 1;
-    const qty = shelfQty + backQty;
-    if (state.cash < unit * qty) continue;
-    state.cash -= unit * qty;
-    state.inventory[goods.id].push({ qty: shelfQty, cost: unit, dayIn: 0, shelf: goods.shelf });
-    state.backroom[goods.id].push({ qty: backQty, cost: unit, dayIn: 0, shelf: goods.shelf });
-    /* 初始成色随机：70 - 96 */
-    state.condition[goods.id] = Math.round(clamp(70 + starterRng() * 26, 25, 100));
-  }
+  /* 开局不配货：启动资金全部为现金，商品库存为空，由店主自行进货 */
 }
 
 /* ---------------- 存档（每天开店前自动保存） ---------------- */
@@ -7099,6 +7117,7 @@ function saveGame() {
       clearance: state.clearance,
       ratings: state.ratings,
       dayRent: state.dayRent,
+      rentPaidDay: state.rentPaidDay || 0,
       dayDecorCost: state.dayDecorCost,
       daySpoilage: state.daySpoilage,
       daySpoilRate: state.daySpoilRate,
@@ -7304,6 +7323,7 @@ function loadGame() {
   state.settlement = data.settlement || null;
   state.lastCheck = data.lastCheck || { ok: true, checks: [], issues: [] };
   state.dayRent = data.dayRent || Math.round(loc.rent * sizeOf().rentMult);
+  state.rentPaidDay = Number(data.rentPaidDay) || 0;
   state.dayDecorCost = data.dayDecorCost || decorDaily();
   state.daySpoilage = data.daySpoilage || 0;
   state.daySpoilRate = data.daySpoilRate || 0;
@@ -7730,6 +7750,14 @@ els.backViews.addEventListener("click", (event) => {
   state.backView = button.dataset.view;
   StallAudio.tap();
   renderBackstage();
+});
+
+els.ordersPanel.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-order-range]");
+  if (!button) return;
+  state.orderRange = button.dataset.orderRange || "all";
+  StallAudio.tap();
+  renderOrdersPanel();
 });
 
 els.strategyPanel.addEventListener("click", (event) => {

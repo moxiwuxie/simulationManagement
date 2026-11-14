@@ -2476,6 +2476,19 @@ main.store {
 .strategy-market span.down { color: var(--ok); border-color: #bcd8c8; background: #eef6f0; }
 
 /* 历史订单：汇总、商品排行与最近流水 */
+.order-range { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.order-range button {
+  font-size: 11px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #fffdf6;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.order-range button:hover { border-color: var(--ink-soft); color: var(--ink); }
+.order-range button.on { color: var(--ok); border-color: #bcd8c8; background: #eef6f0; }
 .order-list { display: flex; flex-direction: column; gap: 8px; }
 .order-row {
   display: flex;

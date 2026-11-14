@@ -797,8 +797,36 @@ async function main() {
         profit: state.orders.reduce((sum, order) => sum + order.profit, 0),
         rows: els.ordersPanel.querySelectorAll(".order-row").length,
         goodsRows: els.ordersPanel.querySelectorAll(".order-goods-row").length,
-        hasSummary: els.ordersPanel.textContent.includes("累计订单 2 单") && els.ordersPanel.textContent.includes("总毛利"),
+        hasSummary: els.ordersPanel.textContent.includes("本范围订单 2 单") && els.ordersPanel.textContent.includes("总毛利"),
       };
+
+      /* 20b. 历史订单按经营天数区间筛选 */
+      state.orders = [];
+      state.orderSeq = 0;
+      state.day = 2;
+      recordOrder({
+        customer: "区间测试甲", bargain: "hold",
+        items: [{ gid: og1.id, name: og1.name, cat: og1.cat, unit: og1.unit, qty: 1, price: 500, revenue: 500, cogs: 300 }],
+        revenue: 500, cogs: 300,
+      });
+      state.day = 40;
+      recordOrder({
+        customer: "区间测试乙",
+        items: [{ gid: og2.id, name: og2.name, cat: og2.cat, unit: og2.unit, qty: 1, price: 400, revenue: 400, cogs: 250 }],
+        revenue: 400, cogs: 250,
+      });
+      state.day = 70;
+      state.orderRange = "32-62";
+      state.backView = "orders";
+      renderBackstage();
+      checks.orderRange = {
+        rows: els.ordersPanel.querySelectorAll(".order-row").length,
+        chips: els.ordersPanel.querySelectorAll("[data-order-range]").length,
+        total: els.ordersPanel.textContent.includes("本范围订单 1 单"),
+        label: els.ordersPanel.textContent.includes("第 32–62 天"),
+      };
+      state.orderRange = "all";
+
       for (let i = 0; i < 310; i += 1) {
         recordOrder({ customer: "压测", items: [], revenue: 100, cogs: 50 });
       }
@@ -819,6 +847,38 @@ async function main() {
       };
       state.orders = [];
       state.autoStyle = "balanced";
+
+      /* 22. 开局空库存：启动资金全部为现金 */
+      state.cash = 200000;
+      state.inventory = {};
+      state.backroom = {};
+      state.prices = {};
+      state.condition = {};
+      seedInitialStock();
+      checks.emptyStart = {
+        cash: state.cash,
+        inventoryEmpty: GOODS.every((goods) => (state.inventory[goods.id] || []).length === 0),
+        backroomEmpty: GOODS.every((goods) => (state.backroom[goods.id] || []).length === 0),
+        pricesSet: GOODS.every((goods) => state.prices[goods.id] === goods.base),
+      };
+
+      /* 23. 选址确认即时扣首日租金，且不再默认配货 */
+      state.mapMode = "start";
+      state.shopType = "fruit";
+      state.pendingSize = "stall";
+      state.pendingLoc = LOCATIONS[0];
+      state.pendingName = "回归测试店";
+      state.suppressSave = true;
+      confirmLocation();
+      const openingRent = Math.round(LOCATIONS[0].rent * sizeOf().rentMult);
+      checks.openingCharge = {
+        rent: openingRent,
+        dayRent: state.dayRent,
+        paidDay: state.rentPaidDay,
+        charged: state.cash < 200000,
+        inventoryEmpty: GOODS.every((goods) =>
+          (state.inventory[goods.id] || []).length === 0 && (state.backroom[goods.id] || []).length === 0),
+      };
 
       state.suppressSave = true;
       return checks;
@@ -891,8 +951,11 @@ async function main() {
   check("托管策略三档可切换且倾向生效", data.autoStyle?.styles?.join(",") === "strict,balanced,yield" && data.autoStyle?.strictHolds && data.autoStyle?.yieldAccepts, JSON.stringify(data.autoStyle));
   check("托管策略入口在经营策略页", data.autoStyleUi?.buttons === 3 && data.autoStyleUi?.on === "yield" && data.autoStyleUi?.hasSection, JSON.stringify(data.autoStyleUi));
   check("历史订单记录与汇总守恒", data.orderLedger?.recorded === 2 && data.orderLedger?.daySeq === 2 && data.orderLedger?.total === 1290 && data.orderLedger?.profit === 490 && data.orderLedger?.rows === 2 && data.orderLedger?.goodsRows === 2 && data.orderLedger?.hasSummary, JSON.stringify(data.orderLedger));
+  check("历史订单按经营天数区间筛选", data.orderRange?.rows === 1 && data.orderRange?.chips >= 3 && data.orderRange?.total && data.orderRange?.label, JSON.stringify(data.orderRange));
   check("历史订单容量上限 300", data.orderCap?.size === data.orderCap?.cap && data.orderCap?.cap === 300, JSON.stringify(data.orderCap));
   check("托管策略与订单写入存档", data.orderPersist?.style === "strict" && data.orderPersist?.capped && data.orderPersist?.orders === 300, JSON.stringify(data.orderPersist));
+  check("开局启动资金全为现金且无默认库存", data.emptyStart?.cash === 200000 && data.emptyStart?.inventoryEmpty && data.emptyStart?.backroomEmpty && data.emptyStart?.pricesSet, JSON.stringify(data.emptyStart));
+  check("选址确认即时扣首日租金且不配货", data.openingCharge?.dayRent === data.openingCharge?.rent && data.openingCharge?.paidDay === 1 && data.openingCharge?.charged && data.openingCharge?.inventoryEmpty, JSON.stringify(data.openingCharge));
 
   const layouts = {};
   for (const width of [390, 1440]) {
