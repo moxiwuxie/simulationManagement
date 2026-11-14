@@ -992,13 +992,15 @@ async function main() {
         full: fillBuy.qty === fillCap && backStockOf(fillGid) === fillCap,
       };
 
-      /* 25. 玩家进货时段：打烊后与首日开业前 */
+      /* 25. 玩家进货时段：开门前与打烊后，营业中不可进货 */
       const keepRestockHistory = state.history;
       state.phase = "prep";
       state.history = [{ day: 1, revenue: 0, profit: 0 }];
-      const prepBlocked = !canPlayerRestock();
+      const prepAllowed = canPlayerRestock();
       state.phase = "settle";
       const settleAllowed = canPlayerRestock();
+      state.phase = "open";
+      const openBlocked = !canPlayerRestock();
       state.phase = "prep";
       state.history = [];
       const firstDayAllowed = canPlayerRestock();
@@ -1011,8 +1013,9 @@ async function main() {
       els.overlay.hidden = true;
       state.phase = "prep";
       checks.restockTiming = {
-        prepBlocked,
+        prepAllowed,
         settleAllowed,
+        openBlocked,
         firstDayAllowed,
         settleButton: !!els.settleRestockBtn,
         settleOpened,
@@ -1144,7 +1147,7 @@ async function main() {
   check("解锁状态筛选且未解锁沉底", data.backUnlock?.lockedCount > 0 && data.backUnlock?.sorted && data.backUnlock?.onlyUnlocked && data.backUnlock?.onlyLocked && data.backUnlock?.lowOnlyNoLocked && data.backUnlock?.categoryNoLocked && data.backUnlock?.searchNoLocked, JSON.stringify(data.backUnlock));
   check("进货与定价拆分为独立页签", data.tabSplit?.pricing?.visible && data.tabSplit?.pricing?.goodsHidden && data.tabSplit?.pricing?.rows > 0 && data.tabSplit?.pricing?.priceInputs > 0 && data.tabSplit?.pricing?.restockButtons === 0 && data.tabSplit?.pricing?.stockButtons > 0 && data.tabSplit?.pricing?.panelFlex && data.tabSplit?.pricing?.listScrollable && data.tabSplit?.purchase?.visible && data.tabSplit?.purchase?.rows > 0 && data.tabSplit?.purchase?.restockButtons > 0 && data.tabSplit?.purchase?.priceInputs === 0, JSON.stringify(data.tabSplit));
   check("进满补满后台并立即入库", data.fillBackroom?.full && data.fillBackroom?.delayed === undefined && data.fillBackroom?.qty === data.fillBackroom?.cap, JSON.stringify(data.fillBackroom));
-  check("进货只在打烊后开放", data.restockTiming?.prepBlocked && data.restockTiming?.settleAllowed && data.restockTiming?.firstDayAllowed && data.restockTiming?.settleButton && data.restockTiming?.settleOpened, JSON.stringify(data.restockTiming));
+  check("进货在开门前与打烊后可用", data.restockTiming?.prepAllowed && data.restockTiming?.settleAllowed && data.restockTiming?.openBlocked && data.restockTiming?.firstDayAllowed && data.restockTiming?.settleButton && data.restockTiming?.settleOpened, JSON.stringify(data.restockTiming));
   check("开门与拉闸过场生效", data.shopFx?.closeFx?.closing && data.shopFx?.closeFx?.banner === "拉闸下班" && data.shopFx?.closeFx?.shutter && data.shopFx?.openFx?.opening && data.shopFx?.openFx?.banner === "开门营业", JSON.stringify(data.shopFx));
   check("选址确认即时扣首日租金且不配货", data.openingCharge?.dayRent === data.openingCharge?.rent && data.openingCharge?.paidDay === 1 && data.openingCharge?.charged && data.openingCharge?.inventoryEmpty, JSON.stringify(data.openingCharge));
 

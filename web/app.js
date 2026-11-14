@@ -3509,9 +3509,7 @@ function renderPhase() {
       return;
     }
     els.phaseLabel.textContent = "准备中";
-    els.phaseHint.textContent = state.history.length === 0
-      ? "先在后台备第一批货、上架定价，然后开门营业。"
-      : "今天只做定价与上架；进货已移到打烊后的「备货」环节。";
+    els.phaseHint.textContent = "开门前可补货、定价、上架；营业中只接待顾客，不能进货。";
     els.primaryBtn.textContent = "开门营业";
     els.primaryBtn.disabled = false;
     els.sceneTip.hidden = false;
@@ -5291,8 +5289,8 @@ const RULEBOOK = [
     "进货可选三类渠道：散户批发进价 -10%、额度 +35%，但损耗 +25% 且每批品质随机；本地农贸均衡；品牌冷链贵 14%、额度 -40%，损耗 -40% 且卖相更好",
     "渠道只影响新进的批次，旧库存按当时的渠道继续衰减",
     "每天每种商品有到货额度，切换渠道会按新渠道额度重新折算",
-    "进货只在每天打烊后开放：结算面板点「打烊后备货」，下单立即进入后台，不再有在途物流",
-    "首日开业前可以先进第一批货；之后白天只做定价与上架，开门营业前完成陈列",
+    "打烊结算后或开门前都可以进货，下单立即进入后台，营业中不能进货",
+    "进货不受物流在途影响；首日开业前也可先备第一批货",
     "暴雨天货源不稳，有 15% 概率少发约 20% 货量",
     "每天固定扣除水电杂费，随日租与铺面规模变化；施工日照付",
     "夜市清仓折扣可设 5–9 折，营业中修改会立即生效",
@@ -6143,20 +6141,18 @@ function applyRestock(goods, wanted, options = {}) {
   return { qty, cost: finalCost, room, left, unit, disc, supplier: supplier.name, shorted };
 }
 
-/* 玩家进货时段：打烊结算后可备货；首日开业前允许备第一批货。
- * 若早上所有库存都空了，也放行一次，避免无货可卖又无法补货的死局。 */
+/* 玩家进货时段：打烊结算后与开门前的准备阶段都可备货，营业中不可下单。
+ * 下单立即进入后台，不再有在途物流。 */
 function canPlayerRestock() {
-  if (state.phase === "settle") return true;
-  if (state.phase !== "prep") return false;
-  return state.history.length === 0 || GOODS.every((goods) => totalStockOf(goods.id) <= 0);
+  return state.phase === "prep" || state.phase === "settle";
 }
 
 function restock(goods, wanted) {
   if (!canPlayerRestock()) {
     StallAudio.decline();
     toast(state.phase === "open"
-      ? "营业中不能进货，打烊后再备货"
-      : "进货只在打烊后开放，白天请先定价、上架");
+      ? "营业中不能进货，打烊后或开门前再备货"
+      : "现在不能进货");
     return;
   }
   const result = applyRestock(goods, wanted, wanted === "fill" ? { fullBackroom: true } : {});
@@ -6269,7 +6265,7 @@ function stockCategory(cat = state.backCat) {
 function fillCategory() {
   if (!canPlayerRestock()) {
     StallAudio.decline();
-    toast("本类补缺只在打烊后备货时开放");
+    toast("营业中不能进货，打烊后或开门前再补货");
     return;
   }
   /* 当前标签页内所有商品都补到后台仓容上限：受今日额度与现金限制 */
@@ -7819,7 +7815,7 @@ els.settleRestockBtn.addEventListener("click", () => {
   els.overlay.hidden = true;
   state.backView = "goods";
   openBackstage();
-  toast("打烊后备货已开放：下单立即入后台，明早开店前记得定价上架");
+  toast("打烊后备货已开放：下单立即入后台，明早开店前记得补货与上架");
 });
 
 els.nextDayBtn.addEventListener("click", () => {
