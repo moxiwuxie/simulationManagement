@@ -1,0 +1,51 @@
+{
+  "style_token": "cozy-flat-vector-v1",
+  "style_prompt": "2D game sprite asset for a cozy Chinese vegetable stall management game, flat vector illustration, thick rounded dark-brown outlines, warm pastel palette (cream, tomato red, mint green, butter yellow), soft top-left lighting, subtle paper grain, centered isolated subject, plain light cream background, no text, no watermark, clean edges",
+  "palette": {
+    "cream": "#F7F0DF",
+    "tomato_red": "#D9543F",
+    "mint_green": "#9FCBB5",
+    "butter_yellow": "#F2CE73",
+    "outline_brown": "#4A342B"
+  },
+  "sprites": {
+    "stall": "stall.jpg",
+    "scenes": {
+      "street": "street_clean.jpg",
+      "street_framed": "street_scene.jpg"
+    },
+    "atlases": {
+      "leaf": "atlas_leaf.jpg",
+      "root": "atlas_root.jpg",
+      "solanum": "atlas_solanum.jpg",
+      "mushroom": "atlas_mushroom.jpg",
+      "fruit_a": "atlas_fruit_a.jpg",
+      "fruit_b": "atlas_fruit_b.jpg",
+      "herb": "atlas_herb.jpg"
+    },
+    "goods": {
+      "tomato": "tomato.jpg",
+      "cucumber": "cucumber.jpg",
+      "cabbage": "cabbage.jpg",
+      "spinach": "spinach.jpg",
+      "carrot": "carrot.jpg",
+      "potato": "potato.jpg",
+      "apple": "apple.jpg",
+      "strawberry": "strawberry.jpg"
+    },
+    "customers": {
+      "家庭主妇": "customer_housewife.png",
+      "上班族": "customer_office_worker.png",
+      "学生": "customer_student.png",
+      "老顾客": "customer_regular.png",
+      "美食博主": "customer_blogger.png",
+      "健身达人": "customer_fitness.png",
+      "环卫工人": "customer_sanitation.png",
+      "警察": "customer_police.png",
+      "军人": "customer_soldier.png",
+      "中学生": "customer_teen.png",
+      "阔太太": "customer_wealthy.png",
+      "节俭老人": "customer_poor_elder.png"
+    }
+  }
+}

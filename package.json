@@ -1,0 +1,20 @@
+{
+  "name": "simulation-management",
+  "version": "1.0.0",
+  "private": true,
+  "description": "小店模拟器：Python 经营仿真内核 + 原生 HTML/CSS/JS 交互原型",
+  "scripts": {
+    "serve": "python3 -m http.server 8787",
+    "test": "python3 -m pytest -q",
+    "soak": "python3 -m tools.run_simulation --days 365 --seed 2024",
+    "soak:json": "python3 -m tools.run_simulation --days 365 --seed 2024 --json reports/soak_local.json",
+    "balance": "python3 -m tools.balance_report --days 180",
+    "balance:check": "python3 -m tools.balance_report --days 180 --check --json reports/balance_local.json",
+    "web:test": "node tools/web_regression.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

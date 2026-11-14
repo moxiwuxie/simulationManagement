@@ -1,0 +1,39 @@
+name: soak
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 1 * * *"
+
+jobs:
+  test-and-soak:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Unit and invariant tests
+        run: python -m pytest -q
+
+      - name: 365-day soak
+        env:
+          FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
+        run: python -m tools.run_simulation --days 365 --seed 2024 --json reports/soak_ci.json --notify
+
+      - name: Balance regression
+        run: python -m tools.balance_report --days 180 --check --json reports/balance_ci.json
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: soak-report
+          path: reports/
+          if-no-files-found: ignore

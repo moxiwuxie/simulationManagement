@@ -1,0 +1,44 @@
+name: web
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 2 * * *"
+
+jobs:
+  web-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Start static server and headless Chrome
+        run: |
+          nohup python3 -m http.server 8787 > /tmp/http.log 2>&1 &
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium-browser || command -v chromium)
+          echo "chrome=$CHROME"
+          nohup "$CHROME" --headless=new --no-sandbox --disable-gpu \
+            --remote-debugging-port=9222 --user-data-dir=/tmp/shop-chrome about:blank \
+            > /tmp/chrome.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:9222/json/version > /dev/null && break
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:8787/web/ > /dev/null
+
+      - name: Browser regression
+        run: node tools/web_regression.mjs
+
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-regression-logs
+          path: |
+            /tmp/http.log
+            /tmp/chrome.log
+          if-no-files-found: ignore

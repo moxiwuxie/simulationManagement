@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>阿福蔬果 · 小店模拟器</title>
+<link rel="stylesheet" href="style.css?v=58">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">阿福蔬果</span>
+      <span class="brand-sub">小店模拟器 · 店主视角</span>
+    </div>
+    <div class="dayline">
+      <span id="dayLabel" class="day">第 1 天</span>
+      <button id="locationChip" class="location-chip" type="button" title="查看地图 · 更换店面">
+        <b id="locationName">选择店面</b>
+        <span id="locationRent">日租 —</span>
+      </button>
+      <div class="branch-switch" id="branchSwitch">
+        <button id="branchSwitchBtn" class="location-chip" type="button" title="切换总店 / 分店，远程巡店" aria-haspopup="true" aria-expanded="false" aria-controls="branchSwitchMenu">
+          <b id="branchSwitchName">总店</b>
+          <span id="branchSwitchMeta">切换门店</span>
+        </button>
+        <div id="branchSwitchMenu" class="branch-menu" role="menu" hidden></div>
+      </div>
+      <span id="weatherChip" class="chip">晴</span>
+      <span id="seasonChip" class="chip ghost">春季</span>
+      <span id="eventChip" class="chip ghost">平常日</span>
+      <span id="debtChip" class="chip warn" hidden>欠费 3/3 天</span>
+      <span id="checkPill" class="pill">自检 · 待运行</span>
+    </div>
+    <div class="top-actions">
+      <div class="kpis">
+        <div><b id="cashKpi">¥2,000.00</b><span>现金</span></div>
+        <div><b id="wealthKpi">¥2,000.00</b><span>资产</span></div>
+        <div><b id="repKpi">3.2</b><span>口碑</span></div>
+      </div>
+      <button id="userChip" class="user-chip" type="button" title="账号与经营档案">游客</button>
+      <button id="autoPilotToggle" class="sound-toggle" type="button" aria-pressed="false" aria-label="开启托管">托管 · 关</button>
+      <button id="soundToggle" class="sound-toggle" type="button" aria-pressed="true" aria-label="关闭声音">声音 · 开</button>
+      <button id="rulebookBtn" class="ghost-btn" type="button">规则手册</button>
+      <button id="backstageBtn" class="ghost-btn" type="button">后台管理</button>
+    </div>
+  </header>
+
+  <main class="store">
+    <section class="store-scene" id="storeScene">
+      <div class="awning"></div>
+      <div class="shop-sign">
+        <span>阿福蔬果</span>
+        <small id="signSub">今日新鲜 · 明码标价</small>
+      </div>
+
+      <div class="back-wall">
+        <div class="street-window">
+          <span class="street-label">街面</span>
+          <div id="trafficLane" class="traffic-lane" aria-hidden="true"></div>
+        </div>
+        <div class="door" id="door" aria-hidden="true">
+          <div class="door-frame">
+            <div class="door-glass"><span class="door-knob"></span></div>
+            <span id="doorSign" class="door-sign">准备中</span>
+          </div>
+          <span class="door-bell">叮铃</span>
+        </div>
+        <div id="festivalDeco" class="festival-deco" hidden>
+          <span class="lantern"></span><span class="lantern"></span><span class="lantern"></span>
+        </div>
+        <div id="competitorSign" class="competitor-sign" hidden>街角水果店 · 开业</div>
+
+        <div class="shelf-bar">
+          <div id="shelfTabs" class="shelf-tabs" role="tablist" aria-label="货架品类"></div>
+          <div id="shelfPager" class="shelf-pager" hidden>
+            <button type="button" id="shelfPrev" aria-label="上一页">‹</button>
+            <span id="shelfPageLabel">1 / 1</span>
+            <button type="button" id="shelfNext" aria-label="下一页">›</button>
+          </div>
+        </div>
+        <div id="shelfWall" class="shelf-wall"></div>
+      </div>
+
+      <div class="floor-tiles" aria-hidden="true"></div>
+      <div class="light-shaft" aria-hidden="true"></div>
+      <div id="floorProps" class="floor-props" aria-hidden="true"></div>
+
+      <div class="interaction-floor">
+        <div id="customerStage" class="customer-stage">
+          <div class="empty-state">
+            <p>店门半开，等第一位客人。</p>
+            <span>先去后台进货、上架、定价，再点「开门营业」。</span>
+          </div>
+        </div>
+        <div id="queueStrip" class="queue-strip" hidden></div>
+      </div>
+
+      <ol id="receipt" class="receipt" aria-label="今日流水"></ol>
+
+      <div class="counter">
+        <div class="counter-top"></div>
+        <div class="counter-front">
+          <div class="counter-note">
+            <span id="phaseMini">准备中</span>
+            <b id="counterSales">今日 0 单</b>
+          </div>
+          <div class="scale" aria-hidden="true">
+            <span class="scale-pan"></span>
+            <span class="scale-screen" id="scaleScreen">0.000</span>
+            <span class="scale-needle"></span>
+          </div>
+          <div class="register" id="register" aria-label="收银台">
+            <div class="register-screen">
+              <span>现金</span>
+              <b id="registerCash">¥0.00</b>
+            </div>
+            <div class="register-body">
+              <div class="register-keys">
+                <i></i><i></i><i></i><i></i><i></i><i></i>
+              </div>
+              <span class="register-brand">收银台</span>
+            </div>
+            <div class="register-drawer"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="sceneTip" class="scene-tip">先到后台进货、上架、定价，再开门营业。</div>
+    </section>
+  </main>
+
+  <footer class="actionbar">
+    <div class="phase">
+      <span id="phaseLabel">准备中</span>
+      <p id="phaseHint">后台补货、定价，然后开门营业。</p>
+    </div>
+    <div class="action-right">
+      <button id="pauseBtn" class="ghost-btn pause-btn" type="button" hidden>暂停接待</button>
+      <div class="speed" id="speedGroup" role="group" aria-label="营业速度">
+        <button type="button" data-speed="1">1×</button>
+        <button type="button" data-speed="2" class="on">2×</button>
+        <button type="button" data-speed="4">4×</button>
+      </div>
+      <button id="primaryBtn" class="primary" type="button">开门营业</button>
+      <button id="skipBuildBtn" class="ghost-btn build-skip" type="button" hidden>跳过施工日</button>
+    </div>
+  </footer>
+
+  <!-- 后台抽屉 -->
+  <div id="backstageMask" class="backstage-mask" hidden></div>
+  <aside id="backstage" class="backstage" hidden aria-label="后台管理">
+    <header class="backstage-head">
+      <div>
+        <h2>后台管理</h2>
+        <p>营业前把货、价、店面都定好；进货进后台，上架后台货才能售卖。营业中也能维护商品，但会占用一名空闲员工。</p>
+      </div>
+      <button id="backstageClose" class="ghost-btn" type="button">返回店面</button>
+    </header>
+    <div id="backViews" class="back-views" role="tablist" aria-label="后台模块">
+      <button type="button" data-view="goods" class="on">进货与定价</button>
+      <button type="button" data-view="decor">店铺装修</button>
+      <button type="button" data-view="strategy">经营策略</button>
+      <button type="button" data-view="staff">员工</button>
+      <button type="button" data-view="branch">分店</button>
+      <button type="button" data-view="orders">历史订单</button>
+      <button type="button" data-view="growth">成长</button>
+    </div>
+    <div id="ledgerSummary" class="ledger-summary"></div>
+    <div id="goodsPanel">
+      <div class="ledger-toolbar">
+        <div id="backTabs" class="back-tabs" role="tablist" aria-label="后台品类"></div>
+        <div class="back-tools">
+          <input id="backSearch" type="search" placeholder="搜索商品" autocomplete="off">
+          <select id="backSupplier" class="supplier-select" title="进货渠道"></select>
+          <label class="low-toggle"><input id="backLowOnly" type="checkbox"> 只看缺货</label>
+          <button id="backFillCat" class="ghost-btn" type="button">本类补缺</button>
+          <button id="backStockCat" class="ghost-btn" type="button">本类上架</button>
+        </div>
+      </div>
+      <div class="ledger-table">
+        <div class="ledger-cols">
+          <span>商品</span><span>台面 / 后台 / 到货</span><span>售价</span><span>进货 · 上架</span>
+        </div>
+        <div id="ledgerList" class="ledger-list"></div>
+      </div>
+    </div>
+    <div id="decorPanel" class="decor-panel" hidden></div>
+    <div id="strategyPanel" class="strategy-panel" hidden></div>
+    <div id="staffPanel" class="strategy-panel" hidden></div>
+    <div id="branchPanel" class="strategy-panel" hidden></div>
+    <div id="ordersPanel" class="strategy-panel" hidden></div>
+    <div id="growthPanel" class="strategy-panel" hidden></div>
+    <footer class="backstage-foot">
+      <p>这里定的是基准价：雨天部分品类会自动上浮（各店型不同），晚市后半段进入清仓全场 5 折；售价不得低于进价 5%。进货进入后台，点「上架」才能摆到台面售卖；台面与后台都有容量上限，后台囤货同样会腐损。</p>
+      <button id="quitBizBtn" class="ghost-btn danger" type="button">退出经营</button>
+    </footer>
+  </aside>
+
+  <!-- 商品详情：成色 / 卖相 / 批次 -->
+  <div id="goodsModal" class="goods-modal" hidden>
+    <div class="goods-modal-card" role="dialog" aria-modal="true" aria-labelledby="goodsModalName">
+      <div id="goodsModalBody"></div>
+    </div>
+  </div>
+
+  <!-- 规则手册 -->
+  <div id="rulebookModal" class="goods-modal" hidden>
+    <div class="goods-modal-card rb-card" role="dialog" aria-modal="true">
+      <button class="gm-close" type="button" data-close aria-label="关闭">×</button>
+      <h3 class="rb-title">📖 经营规则手册</h3>
+      <div id="rulebookBody"></div>
+      <div class="rb-foot">
+        <span>进度会实时保存（营业中按顾客推进），关页后可继续。</span>
+        <button id="resetGameBtn" class="ghost-btn" type="button">重新开业（清空存档）</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 员工事件弹层 -->
+  <div id="employeeModal" class="goods-modal" hidden>
+    <div class="goods-modal-card" role="dialog" aria-modal="true">
+      <div id="employeeModalBody"></div>
+    </div>
+  </div>
+
+  <!-- 地图选址 -->
+  <div id="mapOverlay" class="map-overlay" hidden>
+    <div class="map-panel" role="dialog" aria-modal="true" aria-labelledby="mapTitle">
+      <header class="map-head">
+        <div>
+          <p class="eyebrow">创业开店 · 青禾街道</p>
+          <h2 id="mapTitle">选类型、选位置、选铺面</h2>
+        </div>
+        <button id="mapClose" class="ghost-btn" type="button" hidden>取消</button>
+      </header>
+      <div id="shopTypeBar" class="shop-type-bar"></div>
+      <div class="map-body">
+        <div class="map-canvas" id="mapCanvas">
+          <svg class="map-svg" viewBox="0 0 1000 640" preserveAspectRatio="none" aria-hidden="true">
+            <rect width="1000" height="640" fill="#f4ecda"/>
+            <g fill="#ece0c7" stroke="#e0d2b5" stroke-width="2">
+              <rect x="48" y="52" width="196" height="118" rx="10"/>
+              <rect x="300" y="48" width="168" height="108" rx="10"/>
+              <rect x="548" y="42" width="182" height="126" rx="10"/>
+              <rect x="806" y="48" width="146" height="128" rx="10"/>
+              <rect x="52" y="368" width="168" height="118" rx="10"/>
+              <rect x="438" y="362" width="120" height="100" rx="10"/>
+              <rect x="872" y="352" width="92" height="128" rx="10"/>
+              <rect x="612" y="184" width="152" height="92" rx="10"/>
+            </g>
+            <rect x="606" y="356" width="186" height="142" rx="18" fill="#dcead9" stroke="#c3d6bf" stroke-width="2"/>
+            <text x="699" y="432" text-anchor="middle" font-size="15" fill="#7e9c7e" letter-spacing="2">梧桐公园</text>
+            <path d="M -20 566 C 160 526, 270 616, 430 578 S 764 506, 1020 546" fill="none" stroke="#cfe3e8" stroke-width="58" stroke-linecap="round"/>
+            <path d="M -20 566 C 160 526, 270 616, 430 578 S 764 506, 1020 546" fill="none" stroke="#b7d4dc" stroke-width="2" stroke-dasharray="12 10"/>
+            <text x="118" y="602" font-size="13" fill="#8fb4bc" letter-spacing="2">老城河</text>
+            <g stroke="#e3d5ba" stroke-width="36" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M 0 320 H 1000"/>
+              <path d="M 520 0 V 640"/>
+              <path d="M 0 130 L 372 130 L 520 320"/>
+              <path d="M 520 320 L 812 336 L 1000 268"/>
+              <path d="M 300 320 L 300 640"/>
+              <path d="M 700 0 L 700 300"/>
+            </g>
+            <g stroke="#fffdf6" stroke-width="27" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M 0 320 H 1000"/>
+              <path d="M 520 0 V 640"/>
+              <path d="M 0 130 L 372 130 L 520 320"/>
+              <path d="M 520 320 L 812 336 L 1000 268"/>
+              <path d="M 300 320 L 300 640"/>
+              <path d="M 700 0 L 700 300"/>
+            </g>
+            <g font-size="12" fill="#b3a487" letter-spacing="2">
+              <text x="390" y="312">青禾路</text>
+              <text x="528" y="470" transform="rotate(90 528 470)">地铁 2 号线</text>
+              <text x="742" y="326">梧桐街</text>
+              <text x="112" y="124">大学城路</text>
+            </g>
+            <g fill="#d7c9ad">
+              <circle cx="470" cy="466" r="4"/><circle cx="470" cy="500" r="4"/><circle cx="470" cy="534" r="4"/>
+            </g>
+            <text x="486" y="500" font-size="12" fill="#a99a7c">地铁站</text>
+          </svg>
+          <div id="mapMarkers" class="map-markers"></div>
+          <span class="map-scale">200 m</span>
+        </div>
+        <aside id="mapDetail" class="map-detail"></aside>
+      </div>
+      <footer class="map-foot">
+        <div id="mapSizes" class="map-sizes" role="group" aria-label="铺面规格"></div>
+        <p id="mapFootNote">租金按天结算，开业当天开始计租。</p>
+        <button id="mapConfirm" class="primary" type="button">在这里开店</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- 结算 -->
+  <div id="settleOverlay" class="overlay" hidden>
+    <div class="settle-panel" role="dialog" aria-modal="true" aria-labelledby="settleTitle">
+      <div class="settle-head">
+        <h2 id="settleTitle">今日结算</h2>
+        <span id="settleSub" class="settle-sub"></span>
+      </div>
+      <div class="settle-grid">
+        <div class="settle-numbers" id="settleNumbers"></div>
+        <div class="settle-check">
+          <h3>每日自检</h3>
+          <ul id="checkList"></ul>
+        </div>
+      </div>
+      <button id="nextDayBtn" class="primary wide" type="button">进入下一天</button>
+    </div>
+  </div>
+
+  <!-- 破产清算 -->
+  <div id="bankruptOverlay" class="overlay bankrupt-overlay" hidden>
+    <div class="settle-panel bankrupt-panel" role="dialog" aria-modal="true" aria-labelledby="bankruptTitle">
+      <div class="bankrupt-mark">💥</div>
+      <h2 id="bankruptTitle">破产清算</h2>
+      <p id="bankruptReason" class="bankrupt-reason"></p>
+      <div id="bankruptStats" class="bankrupt-stats"></div>
+      <div class="bankrupt-actions">
+        <button id="bankruptResetBtn" class="primary wide" type="button">重新开业（清空存档）</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 主动退出经营：确认 -->
+  <div id="quitOverlay" class="overlay bankrupt-overlay" hidden>
+    <div class="settle-panel bankrupt-panel quit-panel" role="dialog" aria-modal="true" aria-labelledby="quitTitle">
+      <div class="bankrupt-mark">🚪</div>
+      <h2 id="quitTitle">退出经营</h2>
+      <p class="bankrupt-reason">提前退租按常规支付 30 天日租作为违约金；库存按成本 50% 清算。确认后本局结束。</p>
+      <div id="quitQuote" class="bankrupt-stats"></div>
+      <p id="quitWarning" class="quit-warning"></p>
+      <div class="quit-actions">
+        <button id="quitCancelBtn" class="ghost-btn" type="button">继续经营</button>
+        <button id="quitConfirmBtn" class="primary" type="button">确认退出</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 主动退出经营：结果 -->
+  <div id="quitResultOverlay" class="overlay bankrupt-overlay" hidden>
+    <div class="settle-panel bankrupt-panel quit-panel" role="dialog" aria-modal="true" aria-labelledby="quitResultTitle">
+      <div class="bankrupt-mark">🚪</div>
+      <h2 id="quitResultTitle">已退出经营</h2>
+      <p id="quitReason" class="bankrupt-reason"></p>
+      <div id="quitStats" class="bankrupt-stats"></div>
+      <div class="bankrupt-actions">
+        <button id="quitResetBtn" class="primary wide" type="button">重新开业（清空存档）</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 店主账号：登录 / 注册 / 档案统计 -->
+  <div id="authOverlay" class="overlay auth-overlay" hidden>
+    <div class="auth-panel" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+      <h2 id="authTitle">店主账号</h2>
+      <p id="authHint" class="auth-hint">登录后经营数据按账号记忆；游客进度只保存在本机，不记入任何账号。</p>
+      <div id="authForm" class="auth-form">
+        <input id="authName" type="text" maxlength="12" placeholder="用户名（2-12 字）" autocomplete="username">
+        <input id="authPass" type="password" maxlength="24" placeholder="密码（至少 4 位）" autocomplete="current-password">
+        <p id="authError" class="auth-error" hidden></p>
+        <div class="auth-actions">
+          <button id="authLoginBtn" class="primary" type="button">登录</button>
+          <button id="authRegisterBtn" class="ghost-btn" type="button">注册新账号</button>
+          <button id="authGuestBtn" class="ghost-btn" type="button">游客试玩</button>
+        </div>
+      </div>
+      <div id="authProfile" class="auth-profile" hidden>
+        <div id="authStats" class="auth-stats"></div>
+        <div class="auth-actions">
+          <button id="authLogoutBtn" class="ghost-btn danger" type="button">退出登录</button>
+          <button id="authCloseBtn" class="ghost-btn" type="button">关闭</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="catalog.js?v=58"></script>
+  <script src="audio.js?v=58"></script>
+  <script src="app.js?v=58"></script>
+</body>
+</html>
