@@ -197,23 +197,28 @@ function weatherDecayMult(goods) {
   return 1;
 }
 
-/* 三类供货商：低价高风险 / 均衡 / 高价低损耗
- * volume 是每日到货额度系数：散户货多但不稳，冷链量少但品质好。 */
+/* 采购玩法扩展点：目前所有商品、玩家与自动采购统一使用同一套采购口径。
+ * 后续要接入渠道、议价、期货等玩法时，改 procurementProfile() 返回不同 profile 即可。 */
 const SUPPLIERS = [
   { id: "street", name: "散户批发", icon: "🧺", price: 0.9, decay: 1.25, quality: 2, volume: 1.35, desc: "进价 -10%、额度 +35%，品质不稳，损耗 +25%" },
-  { id: "market", name: "本地农贸", icon: "🏪", price: 1, decay: 1, quality: 5, volume: 1, desc: "价格、额度与品质均衡" },
+  { id: "market", name: "统一采购", icon: "🧾", price: 1, decay: 1, quality: 5, volume: 1, desc: "统一进价、每日额度、损耗与品质" },
   { id: "cold", name: "品牌冷链", icon: "❄️", price: 1.14, decay: 0.6, quality: 9, volume: 0.6, desc: "进价 +14%、额度 -40%，损耗 -40%，卖相更好" },
 ];
 const SUPPLIER_INDEX = Object.fromEntries(SUPPLIERS.map((supplier) => [supplier.id, supplier]));
+const UNIFIED_PROCUREMENT_ID = "market";
 
 /* 进货直接入库：不再有物流在途状态。
  * 玩家下单统一放在打烊后（结算面板「打烊后备货」），白天只做定价与上架。 */
 
-function supplierOf() {
-  return SUPPLIER_INDEX[state.supplier] || SUPPLIERS[1];
+function procurementProfile() {
+  return SUPPLIER_INDEX[UNIFIED_PROCUREMENT_ID] || SUPPLIERS[1];
 }
 
-/* 渠道每日到货额度：基础额度 × 渠道 volume */
+function supplierOf() {
+  return procurementProfile();
+}
+
+/* 每日到货额度：统一口径下直接使用基础额度 */
 function supplyQuotaOf(gid) {
   return Math.round((state.supplyQuota?.[gid] || 0) * (supplierOf().volume ?? 1));
 }
@@ -833,8 +838,6 @@ const state = {
   managerAuto: false,
   hireRequests: [],
   daySpoilDiag: null,
-  /* 进货渠道：street / market / cold */
-  supplier: "market",
   /* 夜市清仓折扣：0.5–0.9 */
   clearanceRate: 0.5,
   dayUtility: 0,
@@ -1007,7 +1010,6 @@ const els = {
   backTabs: $("backTabs"),
   backSearch: $("backSearch"),
   backUnlockFilter: $("backUnlockFilter"),
-  backSupplier: $("backSupplier"),
   backLowOnly: $("backLowOnly"),
   backOwnedOnly: $("backOwnedOnly"),
   backFillCat: $("backFillCat"),
@@ -5527,9 +5529,9 @@ const RULEBOOK = [
     "每 10 个游戏日为一个季节：春、夏、秋、冬循环，顶栏会显示当前季节进度",
     "季节影响进价、损耗与需求：夏季水果走量但生鲜损耗 +15%，冬季叶菜/海鲜涨价、根茎与炖汤更受欢迎",
     "天气概率也随季节变化：夏季多闷热与暴雨，冬季几乎不会闷热；闷热天水果损耗翻倍",
-    "进货可选三类渠道：散户批发进价 -10%、额度 +35%，但损耗 +25% 且每批品质随机；本地农贸均衡；品牌冷链贵 14%、额度 -40%，损耗 -40% 且卖相更好",
-    "渠道只影响新进的批次，旧库存按当时的渠道继续衰减",
-    "每天每种商品有到货额度，切换渠道会按新渠道额度重新折算",
+    "采购目前统一口径：所有商品共用同一套进价、每日额度、损耗与品质；行情和季节仍会影响进价",
+    "采购入口已留扩展位，后续可接入渠道、议价、期货等玩法，不影响当前统一结算",
+    "每天每种商品有独立到货额度，下单立即进入后台；营业中不能进货",
     "打烊结算后或开门前都可以进货，下单立即进入后台，营业中不能进货",
     "进货不受物流在途影响；首日开业前也可先备第一批货",
     "暴雨天货源不稳，有 15% 概率少发约 20% 货量",
@@ -5974,13 +5976,6 @@ function renderBackstage() {
   }
 
   renderBackTabs();
-  if (els.backSupplier) {
-    els.backSupplier.innerHTML = SUPPLIERS.map((supplier) => `
-      <option value="${supplier.id}" ${state.supplier === supplier.id ? "selected" : ""}>
-        ${supplier.icon} ${supplier.name} ×${supplier.price.toFixed(2)} · 额度 ${supplier.volume.toFixed(2)}×
-      </option>`).join("");
-    els.backSupplier.title = `${supplierOf().name}：${supplierOf().desc}。打烊后统一备货，下单即入后台。`;
-  }
   const allScope = state.backCat === "all";
   els.backFillCat.textContent = allScope ? "全部补货" : "本类补满";
   els.backFillCat.disabled = !canPlayerRestock();
@@ -6343,7 +6338,7 @@ function applyRestock(goods, wanted, options = {}) {
   const room = Math.max(0, backCapOf(goods) - backStockOf(goods.id));
   const affordable = Math.floor(state.cash / Math.max(1, unit));
   /* 单品的「进满」按后台容量补满，不受当日额度限制；
-   * 普通进货与按类补货仍受渠道额度约束。 */
+   * 普通进货与按类补货仍受每日到货额度约束。 */
   const fullBackroom = options.fullBackroom === true;
   const cap = fullBackroom
     ? Math.min(room, affordable)
@@ -6369,15 +6364,12 @@ function applyRestock(goods, wanted, options = {}) {
   state.dayPurchaseCost = (state.dayPurchaseCost || 0) + finalCost;
   state.dayPurchaseValue = (state.dayPurchaseValue || 0) + qty * lotCost;
   state.supplyUsed[goods.id] = (state.supplyUsed[goods.id] || 0) + qty;
-  /* 渠道决定这批货的损耗速度：散户批次品质有波动，冷链稳定 */
-  const jitter = supplier.id === "street" ? 0.85 + Math.random() * 0.6 : 1;
-  const decayMult = clamp(supplier.decay * jitter, 0.35, 2);
-  const quality = supplier.id === "street"
-    ? Math.max(1, Math.round(supplier.quality * (0.5 + Math.random())))
-    : supplier.quality;
+  /* 采购口径统一后，批次损耗与卖相直接取当前 profile 的数值 */
+  const decayMult = clamp(supplier.decay, 0.35, 2);
+  const quality = supplier.quality;
   /* 下单即入库，不再产生在途状态 */
   addLot("backroom", goods.id, { qty, cost: lotCost, dayIn: state.day, shelf: goods.shelf, decayMult });
-  /* 新货入库，卖相回升；冷链品质更好 */
+  /* 新货入库，卖相回升 */
   state.condition[goods.id] = Math.round(clamp(appealOf(goods.id) + quality, 25, 100));
   return { qty, cost: finalCost, room, left, unit, disc, supplier: supplier.name, shorted };
 }
@@ -7489,7 +7481,6 @@ function saveGame() {
       hireRequests: state.hireRequests,
       activeBranchId: state.activeBranchId,
       daySpoilDiag: state.daySpoilDiag,
-      supplier: state.supplier,
       clearanceRate: state.clearanceRate,
       dayUtility: state.dayUtility,
       stageReached: state.stageReached,
@@ -7688,7 +7679,6 @@ function loadGame() {
   state.managerAuto = !!data.managerAuto;
   state.hireRequests = Array.isArray(data.hireRequests) ? data.hireRequests : [];
   state.daySpoilDiag = data.daySpoilDiag || null;
-  state.supplier = SUPPLIER_INDEX[data.supplier] ? data.supplier : "market";
   state.clearanceRate = clamp(Number(data.clearanceRate) || 0.5, 0.5, 0.9);
   state.dayUtility = Number(data.dayUtility) || 0;
   state.stageReached = Math.max(1, Number(data.stageReached) || 1);
@@ -8416,15 +8406,6 @@ els.backUnlockFilter.addEventListener("change", () => {
   renderBackstage();
 });
 
-els.backSupplier.addEventListener("change", () => {
-  if (!SUPPLIER_INDEX[els.backSupplier.value]) return;
-  state.supplier = els.backSupplier.value;
-  StallAudio.tap();
-  toast(`进货渠道：${supplierOf().name}（${supplierOf().desc}）`);
-  renderBackstage();
-  if (state.phase === "open") saveGame();
-  else persistPrep();
-});
 
 els.mapMarkers.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-loc]");

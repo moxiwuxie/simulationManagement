@@ -99,7 +99,6 @@ async function main() {
       state.staff = [];
       state.branches = [];
       state.weather = { name: "晴" };
-      state.supplier = "street";
       state.premiumUnlocked = undefined;
 
       checks.boot = typeof state === "object" && typeof startDay === "function" && GOODS.length > 0;
@@ -152,28 +151,22 @@ async function main() {
         id: stage.id, sizes: stage.sizes.length, shopTypes: stage.shopTypes.length, req: stage.req,
       }));
 
-      /* 3. 每日额度：渠道系数与已用额度 */
-      state.supplier = "street";
+      /* 3. 统一采购口径：每日额度直接按基础量，已用额度会扣减 */
       state.supplyQuota = { [GOODS[0].id]: 100 };
       state.supplyUsed = {};
-      const streetQuota = supplyQuotaOf(GOODS[0].id);
+      const quota = supplyQuotaOf(GOODS[0].id);
       state.supplyUsed = { [GOODS[0].id]: 100 };
-      const streetLeft = supplyLeftOf(GOODS[0].id);
-      state.supplier = "cold";
-      const coldQuota = supplyQuotaOf(GOODS[0].id);
-      const coldLeft = supplyLeftOf(GOODS[0].id);
+      const left = supplyLeftOf(GOODS[0].id);
       checks.quota = {
-        streetQuota,
-        coldQuota,
-        streetLeft,
-        coldLeft,
-        streetBoost: streetQuota > coldQuota,
-        usedCapped: streetLeft === streetQuota - 100,
+        quota,
+        left,
+        unified: supplierOf().id === "market" && supplierOf().price === 1 && supplierOf().volume === 1,
+        usedCapped: quota === 100 && left === 0,
+        noSelector: !document.getElementById("backSupplier"),
       };
 
       /* 4. 进货直接入后台，无在途状态 */
       state.weather = { name: "晴" };
-      state.supplier = "market";
       const directGoods = GOODS.find((goods) => goodsUnlocked(goods));
       const directGid = directGoods.id;
       const keepDirect = {
@@ -520,7 +513,6 @@ async function main() {
       state.phase = "prep";
       state.size = "large";
       state.location = LOCATIONS[0];
-      state.supplier = "market";
       state.cash = 1000000;
       state.daySoldValue = 0;
       state.dayPurchaseCost = 0;
@@ -1218,7 +1210,7 @@ async function main() {
       && stageSpec[1]?.sizes === 1 && stageSpec[2]?.sizes === 2 && stageSpec[3]?.sizes === 3 && stageSpec[4]?.sizes === 4,
     JSON.stringify(data.stageSpec)
   );
-  check("渠道额度系数生效", data.quota?.streetBoost && data.quota?.usedCapped, JSON.stringify(data.quota));
+  check("采购统一口径且每日额度生效", data.quota?.unified && data.quota?.usedCapped && data.quota?.noSelector, JSON.stringify(data.quota));
   check("进货直接入后台且无在途状态", data.logistics?.qty === 40 && data.logistics?.back === 40 && data.logistics?.delayed === undefined && data.logistics?.noTransit && data.logistics?.valueMatched, JSON.stringify(data.logistics));
   check("分店估值计入阶段资产", data.stageAsset?.counted, JSON.stringify(data.stageAsset));
   check("里程碑 6 个、7 天点亮 3 个", data.gentle?.chips === 6 && data.gentle?.chipsOn === 3, JSON.stringify(data.gentle));
