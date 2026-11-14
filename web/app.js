@@ -204,11 +204,8 @@ const SUPPLIERS = [
 ];
 const SUPPLIER_INDEX = Object.fromEntries(SUPPLIERS.map((supplier) => [supplier.id, supplier]));
 
-/* 大额进货走物流：10 秒起步，最多约 30 秒；暴雨再延迟。
- * 下单即扣款，资金先被预占，到货后才进后台。 */
-const BULK_SHIPPING_QTY = 30;
-const BULK_DELAY_BASE = 10000;
-const BULK_DELAY_MAX = 15000;
+/* 进货直接入库：不再有物流在途状态。
+ * 玩家下单统一放在打烊后（结算面板「打烊后备货」），白天只做定价与上架。 */
 
 function supplierOf() {
   return SUPPLIER_INDEX[state.supplier] || SUPPLIERS[1];
@@ -221,18 +218,6 @@ function supplyQuotaOf(gid) {
 
 function supplyLeftOf(gid) {
   return Math.max(0, supplyQuotaOf(gid) - (state.supplyUsed?.[gid] || 0));
-}
-
-/* 在途数量：已下单、物流未送达 */
-function shipmentQtyOf(gid) {
-  return (state.shipments || []).filter((ship) => ship.gid === gid).reduce((sum, ship) => sum + ship.qty, 0);
-}
-
-function shippingDelayMs(qty) {
-  const supplier = supplierOf();
-  const bulk = Math.min(BULK_DELAY_MAX, Math.max(0, qty - BULK_SHIPPING_QTY) * 200);
-  const weather = state.weather?.name === "暴雨" ? 5000 : state.weather?.name === "小雨" ? 2000 : 0;
-  return Math.round((BULK_DELAY_BASE + bulk + weather) * (supplier.id === "cold" ? 0.75 : 1));
 }
 
 /* ---------------- 经营阶段：把店型、铺面和硬件串成关卡 ---------------- */
@@ -781,7 +766,6 @@ const state = {
   backroom: {},
   supplyQuota: {},
   supplyUsed: {},
-  shipments: [],
   market: 1,
   weather: null,
   event: null,
@@ -986,6 +970,7 @@ const els = {
   primaryBtn: $("primaryBtn"),
   skipBuildBtn: $("skipBuildBtn"),
   sceneTip: $("sceneTip"),
+  phaseBanner: $("phaseBanner"),
   trafficLane: $("trafficLane"),
   festivalDeco: $("festivalDeco"),
   competitorSign: $("competitorSign"),
@@ -1032,6 +1017,7 @@ const els = {
   settleNumbers: $("settleNumbers"),
   checkList: $("checkList"),
   nextDayBtn: $("nextDayBtn"),
+  settleRestockBtn: $("settleRestockBtn"),
   bankruptOverlay: $("bankruptOverlay"),
   bankruptReason: $("bankruptReason"),
   bankruptStats: $("bankruptStats"),
@@ -1163,14 +1149,11 @@ function totalStockOf(gid) {
   return shelfStockOf(gid) + backStockOf(gid);
 }
 
-/* 货值：台面 + 后台 + 在途，全部按各批次的真实进价计价 */
+  /* 货值：台面 + 后台，全部按各批次的真实进价计价 */
 function bookValue() {
-  const stored = [...Object.values(state.inventory), ...Object.values(state.backroom)].reduce(
+  return [...Object.values(state.inventory), ...Object.values(state.backroom)].reduce(
     (sum, lots) => sum + lots.reduce((acc, lot) => acc + lot.qty * lot.cost, 0), 0
   );
-  /* 在途货物已经付过钱，计入资产，保证对账守恒 */
-  const transit = (state.shipments || []).reduce((sum, ship) => sum + ship.qty * ship.cost, 0);
-  return stored + transit;
 }
 
 /* 分店估值属于老板资产，但不参与主店现金对账 */
@@ -1235,7 +1218,7 @@ function moveToShelf(gid, wanted = "fill") {
 function moveToBackroom(gid, wanted = "fill") {
   const goods = GOOD_INDEX[gid];
   if (!goods) return { moved: 0, room: 0, shelf: 0 };
-  const room = Math.max(0, backCapOf(goods) - backStockOf(gid) - shipmentQtyOf(gid));
+  const room = Math.max(0, backCapOf(goods) - backStockOf(gid));
   const shelf = shelfStockOf(gid);
   if (room <= 0 || shelf <= 0) return { moved: 0, room, shelf };
   let remaining = wanted === "fill" ? room : Math.min(Math.max(0, Number(wanted) || 0), room);
@@ -1869,8 +1852,7 @@ function startDay() {
     logLine(`— ${season.name}季：${season.tip} —`, "good");
     toast(`换季：进入${season.name}季，进价、损耗与品类需求已调整`);
   }
-  /* 昨晚下的物流单，夜里到店的先卸货 */
-  deliverShipments(true);
+  /* 进货直接入后台，隔夜不产生在途 */
   const openCosts = [
     rent > 0 ? `付租金 ${money(rent)}` : "",
     utility ? `水电 ${money(utility)}` : "",
@@ -2110,6 +2092,29 @@ function basketFactor() {
   return +clamp(priceFactor * promoFactor * pressure, 0.8, 1.25).toFixed(3);
 }
 
+/* 开门 / 拉闸的强化过场：门扇大摆、灯光闪一下，拉闸时卷帘落下 */
+let shopFxTimer = 0;
+function playShopTransition(kind) {
+  const scene = els.storeScene;
+  if (!scene || !els.phaseBanner) return;
+  const opening = kind === "open";
+  scene.classList.remove("shop-opening", "shop-closing");
+  els.phaseBanner.classList.remove("show", "close");
+  /* 强制重排，保证连续两次开门也能重新播放动画 */
+  void scene.offsetWidth;
+  scene.classList.add(opening ? "shop-opening" : "shop-closing");
+  els.phaseBanner.textContent = opening ? "开门营业" : "拉闸下班";
+  els.phaseBanner.classList.toggle("close", !opening);
+  els.phaseBanner.classList.add("show");
+  els.door.classList.add("open");
+  clearTimeout(shopFxTimer);
+  shopFxTimer = setTimeout(() => {
+    scene.classList.remove("shop-opening", "shop-closing");
+    els.phaseBanner.classList.remove("show", "close");
+    els.door.classList.remove("open");
+  }, 1900);
+}
+
 async function openDay() {
   if (state.quit) {
     renderQuit();
@@ -2151,6 +2156,7 @@ async function openDay() {
   renderHud();
   StallAudio.setAmbience(true);
   StallAudio.openShop();
+  playShopTransition("open");
 
   const rng = mulberry32(hashSeed(state.seed + 99, state.day));
   const appeal = storeAppealNow();
@@ -2302,6 +2308,8 @@ async function runDay(from) {
   state.clearance = false;
   renderQueue();
   StallAudio.setAmbience(false);
+  playShopTransition("close");
+  await wait(1050);
   settleDay();
 }
 
@@ -3490,7 +3498,9 @@ function renderPhase() {
       return;
     }
     els.phaseLabel.textContent = "准备中";
-    els.phaseHint.textContent = "后台进货、上架、定价，然后开门营业。";
+    els.phaseHint.textContent = state.history.length === 0
+      ? "先在后台备第一批货、上架定价，然后开门营业。"
+      : "今天只做定价与上架；进货已移到打烊后的「备货」环节。";
     els.primaryBtn.textContent = "开门营业";
     els.primaryBtn.disabled = false;
     els.sceneTip.hidden = false;
@@ -5270,8 +5280,9 @@ const RULEBOOK = [
     "进货可选三类渠道：散户批发进价 -10%、额度 +35%，但损耗 +25% 且每批品质随机；本地农贸均衡；品牌冷链贵 14%、额度 -40%，损耗 -40% 且卖相更好",
     "渠道只影响新进的批次，旧库存按当时的渠道继续衰减",
     "每天每种商品有到货额度，切换渠道会按新渠道额度重新折算",
-    "单笔进货 ≥30 件走物流：下单即扣款，10–30 秒后进后台，后台显示在途数量；仓库满时货车会等待",
-    "暴雨天物流更慢，且有 15% 概率少发约 20% 货量",
+    "进货只在每天打烊后开放：结算面板点「打烊后备货」，下单立即进入后台，不再有在途物流",
+    "首日开业前可以先进第一批货；之后白天只做定价与上架，开门营业前完成陈列",
+    "暴雨天货源不稳，有 15% 概率少发约 20% 货量",
     "每天固定扣除水电杂费，随日租与铺面规模变化；施工日照付",
     "夜市清仓折扣可设 5–9 折，营业中修改会立即生效",
   ]},
@@ -5685,12 +5696,12 @@ function renderBackstage() {
       <option value="${supplier.id}" ${state.supplier === supplier.id ? "selected" : ""}>
         ${supplier.icon} ${supplier.name} ×${supplier.price.toFixed(2)} · 额度 ${supplier.volume.toFixed(2)}×
       </option>`).join("");
-    els.backSupplier.title = `${supplierOf().name}：${supplierOf().desc}。大额进货（≥${BULK_SHIPPING_QTY} 件）走物流，下单即扣款，10–30 秒后到货。`;
+    els.backSupplier.title = `${supplierOf().name}：${supplierOf().desc}。打烊后统一备货，下单即入后台。`;
   }
   const allScope = state.backCat === "all";
   els.backFillCat.textContent = allScope ? "全部补货" : "本类补满";
   els.backStockCat.textContent = allScope ? "全部上架" : "本类上架";
-  els.backFillCat.disabled = locked;
+  els.backFillCat.disabled = !canPlayerRestock();
   els.backStockCat.disabled = state.phase === "settle";
   const list = backFilteredGoods();
 
@@ -5704,7 +5715,6 @@ function renderBackstage() {
     const back = backStockOf(goods.id);
     const unit = unitCost(goods);
     const left = supplyLeftOf(goods.id);
-    const transit = shipmentQtyOf(goods.id);
     const price = state.prices[goods.id] || goods.base;
     const { lower, upper } = priceBounds(goods);
     const margin = price > 0 ? Math.round(((price - unit) / price) * 100) : 0;
@@ -5715,11 +5725,11 @@ function renderBackstage() {
       : "";
     const unlock = goodsUnlockState(goods);
     const isLocked = !unlock.unlocked;
-    const canRestockBase = !locked && !isLocked && back + transit < backCapOf(goods) && state.cash >= unit;
+    const canRestockBase = canPlayerRestock() && !isLocked && back < backCapOf(goods) && state.cash >= unit;
     const canRestock = canRestockBase && left > 0;
     const canFillBack = canRestockBase;
     const canStock = state.phase !== "settle" && back > 0 && shelf < capOf(goods);
-    const canUnshelf = state.phase !== "settle" && shelf > 0 && back + transit < backCapOf(goods);
+    const canUnshelf = state.phase !== "settle" && shelf > 0 && back < backCapOf(goods);
     const rates = spoilageRates(goods);
     const low = shelf <= 1;
     return `
@@ -5737,7 +5747,6 @@ function renderBackstage() {
           <span>台面 <b class="${low ? "low" : ""}">${shelf}</b> / ${capOf(goods)}</span>
           <span>后台 <b class="${back > 0 ? "has-back" : ""}">${back}</b> / ${backCapOf(goods)}</span>
           <span>到货 <b>${left}</b> · 进价 <b>${money(unit)}</b></span>
-          ${transit > 0 ? `<span class="ledger-ship">在途 <b>${transit}</b> · 物流中</span>` : ""}
         </div>
         <div class="ledger-price">
           <div class="stepper">
@@ -6020,17 +6029,17 @@ function applyRestock(goods, wanted, options = {}) {
   const supplier = supplierOf();
   const unit = unitCost(goods);
   const left = supplyLeftOf(goods.id);
-  /* 进货只占后台仓容：台面库存不计入，在途货物已占用则先扣掉 */
-  const room = Math.max(0, backCapOf(goods) - backStockOf(goods.id) - shipmentQtyOf(goods.id));
+  /* 进货只占后台仓容：台面库存不计入 */
+  const room = Math.max(0, backCapOf(goods) - backStockOf(goods.id));
   const affordable = Math.floor(state.cash / Math.max(1, unit));
-  /* 单品的「进满」按后台容量补满，不受当日额度限制，并直接入库；
+  /* 单品的「进满」按后台容量补满，不受当日额度限制；
    * 普通进货与按类补货仍受渠道额度约束。 */
   const fullBackroom = options.fullBackroom === true;
   const cap = fullBackroom
     ? Math.min(room, affordable)
     : Math.min(left, room, affordable);
   let qty = wanted === "fill" ? cap : Math.min(Number(wanted) || 0, cap);
-  /* 暴雨天货源不稳：有概率少发一部分，模拟物流受阻 */
+  /* 暴雨天货源不稳：有概率少发一部分 */
   let shorted = 0;
   if (qty > 0 && state.weather?.name === "暴雨" && Math.random() < 0.15) {
     shorted = Math.max(1, Math.round(qty * 0.2));
@@ -6056,87 +6065,30 @@ function applyRestock(goods, wanted, options = {}) {
   const quality = supplier.id === "street"
     ? Math.max(1, Math.round(supplier.quality * (0.5 + Math.random())))
     : supplier.quality;
-  let delayed = false;
-  let eta = 0;
-  if (qty >= BULK_SHIPPING_QTY && !options.immediate) {
-    /* 大额进货走物流：先扣款，10–30 秒后到后台 */
-    delayed = true;
-    eta = shippingDelayMs(qty);
-    state.shipments.push({
-      gid: goods.id, qty, cost: lotCost, dayIn: state.day,
-      decayMult, quality, supplier: supplier.name, arriveAt: Date.now() + eta,
-    });
-  } else {
-    addLot("backroom", goods.id, { qty, cost: lotCost, dayIn: state.day, shelf: goods.shelf, decayMult });
-    /* 新货入库，卖相回升；冷链品质更好 */
-    state.condition[goods.id] = Math.round(clamp(appealOf(goods.id) + quality, 25, 100));
-  }
-  return { qty, cost: finalCost, room, left, unit, disc, supplier: supplier.name, delayed, eta, shorted };
+  /* 下单即入库，不再产生在途状态 */
+  addLot("backroom", goods.id, { qty, cost: lotCost, dayIn: state.day, shelf: goods.shelf, decayMult });
+  /* 新货入库，卖相回升；冷链品质更好 */
+  state.condition[goods.id] = Math.round(clamp(appealOf(goods.id) + quality, 25, 100));
+  return { qty, cost: finalCost, room, left, unit, disc, supplier: supplier.name, shorted };
 }
 
-/* 物流到货：把在途批次搬进后台；仓库满时货车在门口等，不会凭空消失 */
-function deliverShipments(silent = false) {
-  if (!state.shipments?.length) return { units: 0, kinds: 0 };
-  const now = Date.now();
-  let units = 0;
-  let kinds = 0;
-  const waiting = [];
-  for (const ship of state.shipments) {
-    if ((ship.arriveAt || 0) > now) {
-      waiting.push(ship);
-      continue;
-    }
-    const goods = GOOD_INDEX[ship.gid];
-    if (!goods) continue;
-    const room = Math.max(0, backCapOf(goods) - backStockOf(ship.gid));
-    if (room <= 0) {
-      waiting.push({ ...ship, arriveAt: now + 5000 });
-      continue;
-    }
-    const qty = Math.min(ship.qty, room);
-    addLot("backroom", ship.gid, {
-      qty, cost: ship.cost, dayIn: ship.dayIn ?? state.day, shelf: goods.shelf, decayMult: ship.decayMult || 1,
-    });
-    state.condition[ship.gid] = Math.round(clamp(appealOf(ship.gid) + (ship.quality || 0), 25, 100));
-    units += qty;
-    kinds += 1;
-    if (qty < ship.qty) waiting.push({ ...ship, qty: ship.qty - qty, arriveAt: now + 5000 });
-    logLine(`物流到货 ${goods.name} ×${qty}${goods.unit}（${ship.supplier}）`, "good");
-  }
-  state.shipments = waiting;
-  if (!units) return { units, kinds };
-  if (silent) {
-    logLine(`夜间到货：${kinds} 种 / ${units} 件已入后台`, "good");
-    return { units, kinds };
-  }
-  toast(`物流到货：${kinds} 种 / ${units} 件已入后台，记得上架`);
-  renderHud();
-  renderShelf();
-  renderBackstage();
-  return { units, kinds };
-}
-
-/* 营业中每秒检查在途物流 */
-function tickShipments() {
-  if (!state.booted || !state.shipments?.length) return;
-  const before = state.shipments.length;
-  const beforeQty = state.shipments.reduce((sum, ship) => sum + ship.qty, 0);
-  deliverShipments(false);
-  const afterQty = state.shipments.reduce((sum, ship) => sum + ship.qty, 0);
-  if (state.shipments.length !== before || afterQty !== beforeQty) {
-    if (state.phase === "open") saveGame();
-    else persistPrep();
-  }
+/* 玩家进货时段：打烊结算后可备货；首日开业前允许备第一批货。
+ * 若早上所有库存都空了，也放行一次，避免无货可卖又无法补货的死局。 */
+function canPlayerRestock() {
+  if (state.phase === "settle") return true;
+  if (state.phase !== "prep") return false;
+  return state.history.length === 0 || GOODS.every((goods) => totalStockOf(goods.id) <= 0);
 }
 
 function restock(goods, wanted) {
-  if (state.phase !== "prep") {
-    toast("营业中不能进货");
+  if (!canPlayerRestock()) {
+    StallAudio.decline();
+    toast(state.phase === "open"
+      ? "营业中不能进货，打烊后再备货"
+      : "进货只在打烊后开放，白天请先定价、上架");
     return;
   }
-  const result = applyRestock(goods, wanted, wanted === "fill"
-    ? { fullBackroom: true, immediate: true }
-    : {});
+  const result = applyRestock(goods, wanted, wanted === "fill" ? { fullBackroom: true } : {});
   if (result.qty <= 0) {
     StallAudio.decline();
     if (result.locked) {
@@ -6149,13 +6101,13 @@ function restock(goods, wanted) {
   StallAudio.tap();
   const discNote = result.disc < 1 ? `，批量${Math.round(result.disc * 100)}折省 ${money(result.qty * result.unit - result.cost)}` : "";
   const shortNote = result.shorted ? `，暴雨少发 ${result.shorted}${goods.unit}` : "";
-  const delayNote = result.delayed ? `，走物流约 ${Math.round(result.eta / 1000)} 秒后到后台` : "";
-  logLine(`进货 ${goods.name} ×${result.qty}${goods.unit}（${result.supplier}），进价 ${money(result.cost)}${discNote}${delayNote}${shortNote}`, "cost");
-  toast(`进货 ${goods.name} ×${result.qty}（${result.supplier}）${result.delayed ? "，在途运输中" : "，记得上架"}${shortNote}`);
+  logLine(`进货 ${goods.name} ×${result.qty}${goods.unit}（${result.supplier}），进价 ${money(result.cost)}${discNote}${shortNote}`, "cost");
+  toast(`进货 ${goods.name} ×${result.qty}（${result.supplier}），已入后台${shortNote}`);
   renderHud();
   renderShelf();
   renderBackstage();
-  persistPrep();
+  if (state.phase === "prep") persistPrep();
+  else saveGame();
 }
 
 /* 后台 → 台面：补货上架 */
@@ -6244,17 +6196,17 @@ function stockCategory() {
 }
 
 function fillCategory() {
-  if (state.phase !== "prep") {
-    toast("营业中不能进货");
+  if (!canPlayerRestock()) {
+    StallAudio.decline();
+    toast("本类补缺只在打烊后备货时开放");
     return;
   }
-  /* 当前标签页内所有商品都补到后台仓容上限：受今日额度、现金与在途占用限制 */
+  /* 当前标签页内所有商品都补到后台仓容上限：受今日额度与现金限制 */
   const targets = backTabGoods()
     .filter((goods) => goodsUnlocked(goods))
     .sort((a, b) => b.pop - a.pop);
   let total = 0;
   let count = 0;
-  let delayed = 0;
   let fullOrQuota = 0;
   let lockedSkip = backTabGoods().length - targets.length;
   let poor = 0;
@@ -6263,7 +6215,6 @@ function fillCategory() {
     if (result.qty > 0) {
       total += result.cost;
       count += 1;
-      if (result.delayed) delayed += 1;
     } else if (result.room <= 0 || result.left <= 0 || result.shorted) {
       fullOrQuota += 1;
     } else {
@@ -6281,7 +6232,6 @@ function fillCategory() {
   }
   StallAudio.tap();
   const notes = [];
-  if (delayed) notes.push(`${delayed} 种大单在途`);
   if (lockedSkip) notes.push(`${lockedSkip} 种未解锁`);
   if (fullOrQuota) notes.push(`${fullOrQuota} 种已满或无额度`);
   if (poor) notes.push(`${poor} 种现金不足`);
@@ -6291,7 +6241,8 @@ function fillCategory() {
   renderHud();
   renderShelf();
   renderBackstage();
-  persistPrep();
+  if (state.phase === "prep") persistPrep();
+  else saveGame();
 }
 
 function changePrice(goods, deltaCents) {
@@ -7177,7 +7128,6 @@ function saveGame() {
       backroom: state.backroom,
       supplyQuota: state.supplyQuota,
       supplyUsed: state.supplyUsed,
-      shipments: state.shipments,
       market: state.market,
       weather: state.weather,
       event: state.event,
@@ -7212,8 +7162,7 @@ function saveGame() {
       stageUp: state.stageUp || null,
       lastSettlement: state.lastSettlement || null,
       shelfTier: state.shelfTier,
-      autoPilot: state.autoPilot,
-      autoStyle: state.autoStyle,
+      autoPilot: state.autoPilot,      autoStyle: state.autoStyle,
       orders: (state.orders || []).slice(-MAX_ORDER_HISTORY),
       orderSeq: state.orderSeq || 0,
       shelfOrder: state.shelfOrder || {},
@@ -7356,7 +7305,6 @@ function loadGame() {
   /* 旧存档只有剩余到货量，按本地农贸额度折算成基础额度 */
   state.supplyQuota = { ...(data.supplyQuota || data.supplyLeft || {}) };
   state.supplyUsed = { ...(data.supplyUsed || {}) };
-  state.shipments = Array.isArray(data.shipments) ? data.shipments : [];
   state.market = data.market || 1;
   state.weather = data.weather || null;
   state.event = data.event || null;
@@ -7794,6 +7742,14 @@ els.primaryBtn.addEventListener("click", () => {
 });
 
 els.skipBuildBtn.addEventListener("click", () => skipBuildDay(false));
+
+els.settleRestockBtn.addEventListener("click", () => {
+  if (state.phase !== "settle") return;
+  els.overlay.hidden = true;
+  state.backView = "goods";
+  openBackstage();
+  toast("打烊后备货已开放：下单立即入后台，明早开店前记得定价上架");
+});
 
 els.nextDayBtn.addEventListener("click", () => {
   if (state.bankrupt || state.quit) return;
@@ -8367,8 +8323,6 @@ renderUserChip();
 /* 施工倒计时：每秒刷新按钮；到点自动进入下一天 */
 syncBuildSkip();
 setInterval(tickBuildSkip, 1000);
-/* 在途物流：每秒检查一次，到点自动入库 */
-setInterval(tickShipments, 1000);
 /* 未登录：提示登录，可直接游客试玩 */
 if (!state.userId) showAuth(false);
 if (purgedStaleData) setTimeout(() => toast("已清理历史账号与存档，可重新注册或游客试玩"), 300);

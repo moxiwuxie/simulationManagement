@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>阿福蔬果 · 小店模拟器</title>
-<link rel="stylesheet" href="style.css?v=63">
+<link rel="stylesheet" href="style.css?v=64">
 </head>
 <body>
   <header class="topbar">
@@ -126,6 +126,8 @@
       </div>
 
       <div id="sceneTip" class="scene-tip">先到后台进货、上架、定价，再开门营业。</div>
+      <div id="shutter" class="shutter" aria-hidden="true"></div>
+      <div id="phaseBanner" class="phase-banner" aria-hidden="true"></div>
     </section>
   </main>
 
@@ -198,7 +200,7 @@
     <div id="ordersPanel" class="strategy-panel" hidden></div>
     <div id="growthPanel" class="strategy-panel" hidden></div>
     <footer class="backstage-foot">
-      <p>这里定的是基准价：雨天部分品类会自动上浮（各店型不同），晚市后半段进入清仓全场 5 折；售价不得低于进价 5%。进货进入后台，点「上架」才能摆到台面售卖；台面与后台都有容量上限，后台囤货同样会腐损。</p>
+      <p>这里定的是基准价：雨天部分品类会自动上浮（各店型不同），晚市后半段进入清仓全场 5 折；售价不得低于进价 5%。进货统一放在打烊后的「备货」环节，下单即入后台；白天只做定价与上架。台面与后台都有容量上限，后台囤货同样会腐损。</p>
       <button id="quitBizBtn" class="ghost-btn danger" type="button">退出经营</button>
     </footer>
   </aside>
@@ -314,7 +316,10 @@
           <ul id="checkList"></ul>
         </div>
       </div>
-      <button id="nextDayBtn" class="primary wide" type="button">进入下一天</button>
+      <div class="settle-actions">
+        <button id="settleRestockBtn" class="ghost-btn" type="button">🛒 打烊后备货</button>
+        <button id="nextDayBtn" class="primary wide" type="button">进入下一天</button>
+      </div>
     </div>
   </div>
 
@@ -386,8 +391,8 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-  <script src="catalog.js?v=63"></script>
-  <script src="audio.js?v=63"></script>
-  <script src="app.js?v=63"></script>
+  <script src="catalog.js?v=64"></script>
+  <script src="audio.js?v=64"></script>
+  <script src="app.js?v=64"></script>
 </body>
 </html>

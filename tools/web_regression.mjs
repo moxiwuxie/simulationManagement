@@ -9,7 +9,7 @@
  *   node tools/web_regression.mjs
  *   node tools/web_regression.mjs --url http://127.0.0.1:8787/web/ --cdp http://127.0.0.1:9222
  *
- * 覆盖：启动、阶段门禁、货架数值、进货额度、物流与在途、阶段资产口径、
+ * 覆盖：启动、阶段门禁、货架数值、进货额度、打烊后备货、阶段资产口径、
  *       温柔建议跨天、阶段升级结算提示、存档字段、手机/桌面横向溢出。
  */
 import process from "node:process";
@@ -171,31 +171,38 @@ async function main() {
         usedCapped: streetLeft === streetQuota - 100,
       };
 
-      /* 4. 物流延迟与在途资产 */
+      /* 4. 进货直接入后台，无在途状态 */
       state.weather = { name: "晴" };
       state.supplier = "market";
-      const delay30 = shippingDelayMs(30);
-      const delay60 = shippingDelayMs(60);
-      state.weather = { name: "暴雨" };
-      const delayRain = shippingDelayMs(30);
-      state.weather = { name: "晴" };
-      state.supplier = "cold";
-      const delayCold = shippingDelayMs(30);
-      state.supplier = "market";
-      const before = bookValue();
-      state.shipments = [{ gid: GOODS[0].id, qty: 10, cost: 100, eta: Date.now() + 60000 }];
-      const after = bookValue();
-      state.shipments = [];
-      checks.logistics = {
-        delay30,
-        delay60,
-        delayRain,
-        delayCold,
-        bulkSlower: delay60 > delay30,
-        rainSlower: delayRain > delay30,
-        coldFaster: delayCold < delay30,
-        transitInBookValue: after - before === 1000,
+      const directGoods = GOODS.find((goods) => goodsUnlocked(goods));
+      const directGid = directGoods.id;
+      const keepDirect = {
+        back: state.backroom[directGid],
+        inv: state.inventory[directGid],
+        cash: state.cash,
+        used: state.supplyUsed[directGid],
+        quota: state.supplyQuota[directGid],
       };
+      state.backroom[directGid] = [];
+      state.inventory[directGid] = [];
+      state.cash = 1000000;
+      state.supplyQuota[directGid] = 100;
+      state.supplyUsed[directGid] = 0;
+      const valueBefore = bookValue();
+      const directBuy = applyRestock(directGoods, 40);
+      const valueAfter = bookValue();
+      checks.logistics = {
+        qty: directBuy.qty,
+        back: backStockOf(directGid),
+        delayed: directBuy.delayed,
+        noTransit: !("shipments" in state) || (state.shipments || []).length === 0,
+        valueMatched: valueAfter - valueBefore === directBuy.cost,
+      };
+      if (keepDirect.back === undefined) delete state.backroom[directGid]; else state.backroom[directGid] = keepDirect.back;
+      if (keepDirect.inv === undefined) delete state.inventory[directGid]; else state.inventory[directGid] = keepDirect.inv;
+      if (keepDirect.used === undefined) delete state.supplyUsed[directGid]; else state.supplyUsed[directGid] = keepDirect.used;
+      if (keepDirect.quota === undefined) delete state.supplyQuota[directGid]; else state.supplyQuota[directGid] = keepDirect.quota;
+      state.cash = keepDirect.cash;
 
       /* 5. 阶段资产口径：分店估值计入总资产 */
       state.cash = 100000;
@@ -482,7 +489,6 @@ async function main() {
         state.inventory[goods.id] = [];
         state.backroom[goods.id] = [];
       }
-      state.shipments = [];
       state.cash = 100000;
       state.branches = [{ value: 75000 }];
       checks.totalAsset = { total: totalAssetValue(), expected: 175000 };
@@ -494,7 +500,6 @@ async function main() {
         state.backroom[goods.id] = [];
         state.supplyQuota[goods.id] = 999;
       }
-      state.shipments = [];
       state.branches = [];
       state.supplyUsed = {};
       state.phase = "prep";
@@ -560,7 +565,6 @@ async function main() {
       /* 12d. 下架：台面 → 后台，总量不变；台面损耗速率应高于后台 */
       state.inventory[flowGoods.id] = [];
       state.backroom[flowGoods.id] = [];
-      state.shipments = [];
       state.phase = "prep";
       addLot("backroom", flowGoods.id, { qty: 6, cost: 1000, dayIn: state.day, shelf: flowGoods.shelf });
       moveToShelf(flowGoods.id, "fill");
@@ -660,36 +664,30 @@ async function main() {
         unlockedAfterProgress: unlockAfterProgress,
       };
 
-      /* 17. 进货只占后台仓容（在途计入）；上架不超过台面容量 */
+      /* 17. 进货只占后台仓容；上架不超过台面容量 */
       const capGoods = GOODS.find((goods) => goods.tier === 1);
       const capGid = capGoods.id;
       const capBack = backCapOf(capGoods);
       const keepStock = {
         back: state.backroom[capGid],
         inv: state.inventory[capGid],
-        ships: state.shipments,
         cash: state.cash,
         used: state.supplyUsed[capGid],
         quota: state.supplyQuota[capGid],
       };
       state.backroom[capGid] = [{ qty: capBack - 4, cost: unitCost(capGoods), dayIn: state.day, shelf: capGoods.shelf, decayMult: 1 }];
       state.inventory[capGid] = [];
-      state.shipments = [{
-        gid: capGid, qty: 4, cost: unitCost(capGoods), dayIn: state.day,
-        decayMult: 1, quality: 5, supplier: "本地农贸", arriveAt: Date.now() + 60000,
-      }];
       state.cash = 1000000;
       state.supplyQuota[capGid] = 100;
       state.supplyUsed[capGid] = 0;
-      const transitOrder = applyRestock(capGoods, 10);
-      const transitBlocked = transitOrder.qty === 0 && state.cash === 1000000;
-      state.shipments = [];
+      const overOrder = applyRestock(capGoods, 10);
+      const capacityCapped = overOrder.qty === 4 && backStockOf(capGid) === capBack;
       state.backroom[capGid] = [{ qty: 50, cost: unitCost(capGoods), dayIn: state.day, shelf: capGoods.shelf, decayMult: 1 }];
       const shelfCap = capOf(capGoods);
       const shelved = moveToShelf(capGid, "fill");
       checks.stockRules = {
         backCap: capBack,
-        transitBlocked,
+        capacityCapped,
         moved: shelved.moved,
         shelfCap,
         shelfAfter: shelfStockOf(capGid),
@@ -700,13 +698,12 @@ async function main() {
       if (keepStock.inv === undefined) delete state.inventory[capGid]; else state.inventory[capGid] = keepStock.inv;
       if (keepStock.used === undefined) delete state.supplyUsed[capGid]; else state.supplyUsed[capGid] = keepStock.used;
       if (keepStock.quota === undefined) delete state.supplyQuota[capGid]; else state.supplyQuota[capGid] = keepStock.quota;
-      state.shipments = keepStock.ships;
       state.cash = keepStock.cash;
 
       /* 18. 批量补货 / 上架按当前标签页覆盖全部商品 */
       const tabCat = CATEGORIES.find((cat) => GOODS.some((goods) => goods.cat === cat.name && goods.tier === 1))?.name;
       const tabGoods = GOODS.filter((goods) => goods.cat === tabCat);
-      const keepTab = { cash: state.cash, cat: state.backCat, ships: state.shipments, quota: {}, used: {}, back: {}, inv: {} };
+      const keepTab = { cash: state.cash, cat: state.backCat, history: state.history, quota: {}, used: {}, back: {}, inv: {} };
       tabGoods.forEach((goods) => {
         keepTab.quota[goods.id] = state.supplyQuota[goods.id];
         keepTab.used[goods.id] = state.supplyUsed[goods.id];
@@ -721,10 +718,11 @@ async function main() {
       state.size = "stall";
       state.shelfTier = "wood";
       state.phase = "prep";
+      state.history = [];
       state.cash = 5000000;
       fillCategory();
       const unlockedTab = tabGoods.filter((goods) => goodsUnlocked(goods));
-      const filledAll = unlockedTab.every((goods) => backStockOf(goods.id) + shipmentQtyOf(goods.id) > 0);
+      const filledAll = unlockedTab.every((goods) => backStockOf(goods.id) > 0);
       const backBeforeShelf = {};
       tabGoods.forEach((goods) => { backBeforeShelf[goods.id] = backStockOf(goods.id); });
       stockCategory();
@@ -737,7 +735,7 @@ async function main() {
         if (keepTab.used[goods.id] === undefined) delete state.supplyUsed[goods.id]; else state.supplyUsed[goods.id] = keepTab.used[goods.id];
       });
       state.backCat = keepTab.cat;
-      state.shipments = keepTab.ships;
+      state.history = keepTab.history;
       state.cash = keepTab.cash;
 
       /* 19. 托管策略：三种风格可切换，严肃守价、妥协快成交 */
@@ -854,7 +852,6 @@ async function main() {
       state.backLowOnly = false;
       state.inventory = {};
       state.backroom = {};
-      state.shipments = [];
       for (const goods of GOODS) {
         state.inventory[goods.id] = [];
         state.backroom[goods.id] = [];
@@ -941,21 +938,59 @@ async function main() {
       state.cash = 1000000;
       state.backroom[fillGid] = [];
       state.inventory[fillGid] = [];
-      state.shipments = [];
       state.supplyQuota[fillGid] = 1;
       state.supplyUsed[fillGid] = 5;
       const fillCap = backCapOf(fillGoods);
-      const fillBuy = applyRestock(fillGoods, "fill", { fullBackroom: true, immediate: true });
+      const fillBuy = applyRestock(fillGoods, "fill", { fullBackroom: true });
       checks.fillBackroom = {
         cap: fillCap,
         qty: fillBuy.qty,
         back: backStockOf(fillGid),
-        transit: shipmentQtyOf(fillGid),
         delayed: fillBuy.delayed,
-        full: fillBuy.qty === fillCap && backStockOf(fillGid) === fillCap && shipmentQtyOf(fillGid) === 0,
+        full: fillBuy.qty === fillCap && backStockOf(fillGid) === fillCap,
       };
 
-      /* 25. 开局空库存：启动资金全部为现金 */
+      /* 25. 玩家进货时段：打烊后与首日开业前 */
+      const keepRestockHistory = state.history;
+      state.phase = "prep";
+      state.history = [{ day: 1, revenue: 0, profit: 0 }];
+      const prepBlocked = !canPlayerRestock();
+      state.phase = "settle";
+      const settleAllowed = canPlayerRestock();
+      state.phase = "prep";
+      state.history = [];
+      const firstDayAllowed = canPlayerRestock();
+      state.history = keepRestockHistory;
+      state.phase = "settle";
+      els.overlay.hidden = false;
+      els.settleRestockBtn.click();
+      const settleOpened = els.overlay.hidden && !els.backstage.hidden && state.backView === "goods";
+      closeBackstage();
+      els.overlay.hidden = true;
+      state.phase = "prep";
+      checks.restockTiming = {
+        prepBlocked,
+        settleAllowed,
+        firstDayAllowed,
+        settleButton: !!els.settleRestockBtn,
+        settleOpened,
+      };
+
+      /* 26. 开门 / 拉闸过场 */
+      playShopTransition("close");
+      const closeFx = {
+        closing: els.storeScene.classList.contains("shop-closing"),
+        banner: els.phaseBanner.textContent,
+        shutter: !!document.querySelector(".shutter"),
+      };
+      playShopTransition("open");
+      const openFx = {
+        opening: els.storeScene.classList.contains("shop-opening"),
+        banner: els.phaseBanner.textContent,
+      };
+      checks.shopFx = { closeFx, openFx };
+
+      /* 27. 开局空库存：启动资金全部为现金 */
       state.cash = 200000;
       state.inventory = {};
       state.backroom = {};
@@ -969,7 +1004,7 @@ async function main() {
         pricesSet: GOODS.every((goods) => state.prices[goods.id] === goods.base),
       };
 
-      /* 25. 选址确认即时扣首日租金，且不再默认配货 */      state.mapMode = "start";
+      /* 27. 选址确认即时扣首日租金，且不再默认配货 */      state.mapMode = "start";
       state.shopType = "fruit";
       state.pendingSize = "stall";
       state.pendingLoc = LOCATIONS[0];
@@ -1020,8 +1055,7 @@ async function main() {
     JSON.stringify(data.stageSpec)
   );
   check("渠道额度系数生效", data.quota?.streetBoost && data.quota?.usedCapped, JSON.stringify(data.quota));
-  check("大单更慢 / 暴雨延迟 / 冷链更快", data.logistics?.bulkSlower && data.logistics?.rainSlower && data.logistics?.coldFaster, JSON.stringify(data.logistics));
-  check("在途货物计入资产", data.logistics?.transitInBookValue, JSON.stringify(data.logistics));
+  check("进货直接入后台且无在途状态", data.logistics?.qty === 40 && data.logistics?.back === 40 && data.logistics?.delayed === undefined && data.logistics?.noTransit && data.logistics?.valueMatched, JSON.stringify(data.logistics));
   check("分店估值计入阶段资产", data.stageAsset?.counted, JSON.stringify(data.stageAsset));
   check("里程碑 6 个、7 天点亮 3 个", data.gentle?.chips === 6 && data.gentle?.chipsOn === 3, JSON.stringify(data.gentle));
   check("昨日建议跨天保留", data.gentle?.carryAdvice, JSON.stringify(data.gentle));
@@ -1044,7 +1078,7 @@ async function main() {
   check("店名自定义与启动资金展示", data.brand?.sign === "测试小铺" && String(data.brand?.title || "").includes("测试小铺") && /¥?2,000/.test(data.brand?.cashText || "") && data.brand?.namePlaceholder === "阿福蔬果", JSON.stringify(data.brand));
   check("新开局口碑初始化", data.reputationInit?.reputation === 3.2 && data.reputationInit?.ratings === 0 && data.reputationInit?.name === "" && data.newRun?.reputation === 3.2, JSON.stringify({ reputationInit: data.reputationInit, newRun: data.newRun }));
   check("菜品三级解锁门槛", data.goodsTiers?.tiers?.[1] > 0 && data.goodsTiers?.tiers?.[2] > 0 && data.goodsTiers?.tiers?.[3] > 0 && data.goodsTiers?.lockedNow && data.goodsTiers?.blocked && data.goodsTiers?.unlockedAfterProgress, JSON.stringify(data.goodsTiers));
-  check("进货按后台仓容且上架不超台面", data.stockRules?.transitBlocked && data.stockRules?.capped && data.stockRules?.moved === data.stockRules?.shelfCap, JSON.stringify(data.stockRules));
+  check("进货按后台仓容且上架不超台面", data.stockRules?.capacityCapped && data.stockRules?.capped && data.stockRules?.moved === data.stockRules?.shelfCap, JSON.stringify(data.stockRules));
   check("批量补货与上架覆盖所选标签页", data.bulkByTab?.count > 0 && data.bulkByTab?.filledAll && data.bulkByTab?.stockedAll, JSON.stringify(data.bulkByTab));
   check("账号档案只反映当前存档", data.profileTotals?.days === 6 && data.profileTotals?.profit === -1000 && data.profileTotals?.best === 12345 && data.profileTotals?.achievements === 0, JSON.stringify(data.profileTotals));
   check("总资产包含分店估值", data.totalAsset?.total === data.totalAsset?.expected, JSON.stringify(data.totalAsset));
@@ -1066,7 +1100,9 @@ async function main() {
   check("铺面越大客流系数越高", data.sizeTraffic?.ascending && data.sizeTraffic?.stall === 0.75 && data.sizeTraffic?.floor === 1.4, JSON.stringify(data.sizeTraffic));
   check("铺面规格切换店面样式", data.sizeStyle?.distinct && data.sizeStyle?.floor === "floor" && data.sizeStyle?.stall === "stall", JSON.stringify(data.sizeStyle));
   check("解锁状态筛选且未解锁沉底", data.backUnlock?.lockedCount > 0 && data.backUnlock?.sorted && data.backUnlock?.onlyUnlocked && data.backUnlock?.onlyLocked, JSON.stringify(data.backUnlock));
-  check("进满补满后台并立即入库", data.fillBackroom?.full && data.fillBackroom?.delayed === false && data.fillBackroom?.qty === data.fillBackroom?.cap, JSON.stringify(data.fillBackroom));
+  check("进满补满后台并立即入库", data.fillBackroom?.full && data.fillBackroom?.delayed === undefined && data.fillBackroom?.qty === data.fillBackroom?.cap, JSON.stringify(data.fillBackroom));
+  check("进货只在打烊后开放", data.restockTiming?.prepBlocked && data.restockTiming?.settleAllowed && data.restockTiming?.firstDayAllowed && data.restockTiming?.settleButton && data.restockTiming?.settleOpened, JSON.stringify(data.restockTiming));
+  check("开门与拉闸过场生效", data.shopFx?.closeFx?.closing && data.shopFx?.closeFx?.banner === "拉闸下班" && data.shopFx?.closeFx?.shutter && data.shopFx?.openFx?.opening && data.shopFx?.openFx?.banner === "开门营业", JSON.stringify(data.shopFx));
   check("选址确认即时扣首日租金且不配货", data.openingCharge?.dayRent === data.openingCharge?.rent && data.openingCharge?.paidDay === 1 && data.openingCharge?.charged && data.openingCharge?.inventoryEmpty, JSON.stringify(data.openingCharge));
 
   const layouts = {};
