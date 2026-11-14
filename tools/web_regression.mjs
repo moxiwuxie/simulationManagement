@@ -925,7 +925,7 @@ async function main() {
       const soldOutHidden = !els.shelfWall.querySelector('[data-gid="' + catGoods[0].id + '"]');
       const soldOutSlot = !!els.shelfWall.querySelector(".stall-slot.empty.is-out");
       openStallDrawer(0);
-      const soldOutFirst = els.stallDrawerList.querySelector("[data-stall-place]");
+      const soldOutFirst = els.stallDrawerList.firstElementChild;
       const soldOutFirstMatch = soldOutFirst?.dataset.stallPlace === catGoods[0].id;
       const soldOutDisabled = !!soldOutFirst?.disabled;
       state.inventory[catGoods[0].id] = soldOutInv;
@@ -942,7 +942,7 @@ async function main() {
 
       openStallDrawer(1);
       const drawerOpen = !els.stallDrawer.hidden;
-      const drawerFirst = els.stallDrawerList.querySelector("[data-stall-place]");
+      const drawerFirst = els.stallDrawerList.firstElementChild;
       const drawerCurrentFirst = drawerFirst?.dataset.stallPlace === catGoods[1].id;
       const drawerButtons = els.stallDrawerList.querySelectorAll("[data-stall-place]").length;
       placeStallSlot(1, unplaced.id);

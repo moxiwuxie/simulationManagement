@@ -3473,7 +3473,7 @@ function renderStallDrawer() {
     && shelfStockOf(goods.id) > 0);
   els.stallDrawerTitle.textContent = `第 ${index + 1} 格`;
   els.stallDrawerSub.textContent = current
-    ? `${current.name} · 台面 ${currentStock} ${current.unit}${currentBack > 0 ? ` · 后台 ${currentBack}` : ""}`
+    ? `上次摆放：${current.name} · 台面 ${currentStock} ${current.unit}${currentBack > 0 ? ` · 后台 ${currentBack}` : ""}`
     : "点击商品摆到这一格";
   const currentRow = current ? `
     <button type="button" class="stall-pick stall-pick-current" data-stall-place="${current.id}" ${currentReady ? "" : "disabled"}>
@@ -3496,9 +3496,9 @@ function renderStallDrawer() {
       <em>¥${yuan(effectivePrice(goods))}</em>
     </button>`).join("");
   els.stallDrawerList.innerHTML = `
-    ${current ? `<button type="button" class="stall-clear stall-clear-row" data-stall-clear>清空第 ${index + 1} 格</button>` : ""}
     ${currentRow}
     ${goodsList.length ? otherRows : `<p class="stall-drawer-empty">${current ? "暂时没有其他可摆放的商品。" : "台面没有可摆放的商品，先到后台进货并上架。"}</p>`}
+    ${current ? `<button type="button" class="stall-clear stall-clear-row" data-stall-clear>清空第 ${index + 1} 格</button>` : ""}
   `;
 }
 
