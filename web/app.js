@@ -811,9 +811,12 @@ const state = {
   lastCheck: { ok: true, checks: [], issues: [] },
   shelfCat: CATEGORIES[0].name,
   shelfPage: 0,
+  /* 摆台顺序：按品类保存商品 id 顺序，越靠前越容易被顾客选中 */
+  shelfOrder: {},
   backCat: "all",
   backQuery: "",
   backLowOnly: false,
+  backOwnedOnly: false,
   mapMode: "start",
   pendingLoc: null,
   decor: { ...DEFAULT_DECOR },
@@ -966,6 +969,7 @@ const els = {
   shelfPageLabel: $("shelfPageLabel"),
   shelfPrev: $("shelfPrev"),
   shelfNext: $("shelfNext"),
+  storeScene: $("storeScene"),
   stage: $("customerStage"),
   floorProps: $("floorProps"),
   queueStrip: $("queueStrip"),
@@ -996,10 +1000,12 @@ const els = {
   backSearch: $("backSearch"),
   backSupplier: $("backSupplier"),
   backLowOnly: $("backLowOnly"),
+  backOwnedOnly: $("backOwnedOnly"),
   backFillCat: $("backFillCat"),
   backStockCat: $("backStockCat"),
   backViews: $("backViews"),
   goodsPanel: $("goodsPanel"),
+  displayPanel: $("displayPanel"),
   decorPanel: $("decorPanel"),
   strategyPanel: $("strategyPanel"),
   staffPanel: $("staffPanel"),
@@ -1516,6 +1522,7 @@ function decorStars(quality) {
 function applyDecorTheme() {
   const scene = $("storeScene");
   if (!scene) return;
+  scene.dataset.size = state.size || "small";
   for (const cat of DECOR_CATS) scene.dataset[cat.id] = state.decor[cat.id] || "";
 }
 
@@ -1656,6 +1663,7 @@ function startDay() {
   state.trafficMult = +(
     weather.traffic * event.traffic * weekendTraffic * rivalPressure
     * locationTrafficFactor(loc) * decorTrafficMult()
+    * sizeTrafficMult()
     * clamp(state.trafficAdapt || 1, 0.85, 1.15)
   ).toFixed(3);
 
@@ -2009,7 +2017,7 @@ function scoreCandidates(customer, rng = Math.random) {
       /* 卖相影响选择：好货更抢手 */
       const appeal = appealOf(goods.id);
       const appealFactor = 0.85 + (appeal / 100) * 0.3;
-      const score = goods.pop * seasonDemandMult(goods) * Math.pow(goods.base / Math.max(1, price), 1.4) * appealFactor * (0.85 + rng() * 0.3);
+      const score = goods.pop * seasonDemandMult(goods) * Math.pow(goods.base / Math.max(1, price), 1.4) * appealFactor * shelfPositionFactor(goods) * (0.85 + rng() * 0.3);
       return { score, goods };
     }).sort((a, b) => b.score - a.score);
     if (candidates.length) scored.push(candidates[0]);
@@ -3217,8 +3225,40 @@ function goodsOfCategory(cat) {
   return GOODS.filter((goods) => goods.cat === cat);
 }
 
+/* 摆台顺序：每个品类保存一份商品 id 顺序；未安排过的商品按目录顺序补在末尾 */
+function displayOrderOf(cat) {
+  const all = goodsOfCategory(cat);
+  const saved = Array.isArray(state.shelfOrder?.[cat]) ? state.shelfOrder[cat] : [];
+  const ids = saved.filter((gid) => all.some((goods) => goods.id === gid));
+  for (const goods of all) {
+    if (!ids.includes(goods.id)) ids.push(goods.id);
+  }
+  return ids.map((gid) => GOOD_INDEX[gid]).filter(Boolean);
+}
+
+function shelfRankOf(goods) {
+  const list = displayOrderOf(goods.cat);
+  const index = list.findIndex((item) => item.id === goods.id);
+  return index < 0 ? list.length : index;
+}
+
+/* 陈列位次影响购买概率：最前 +12%，最后 -12%；只有台面有货才参与排位 */
+function shelfPositionFactor(goods) {
+  const onShelf = goodsOfCategory(goods.cat)
+    .filter((item) => shelfStockOf(item.id) > 0)
+    .sort((a, b) => shelfRankOf(a) - shelfRankOf(b));
+  const index = onShelf.findIndex((item) => item.id === goods.id);
+  if (index < 0 || onShelf.length <= 1) return 1.04;
+  const t = index / (onShelf.length - 1);
+  return +(1.12 - 0.24 * t).toFixed(3);
+}
+
 function shelfPageGoods() {
-  const list = goodsOfCategory(state.shelfCat);
+  /* 台面有货的优先展示，并按摆台顺序排列；售罄商品沉到后面 */
+  const list = displayOrderOf(state.shelfCat).slice().sort((a, b) => {
+    const stockDiff = (shelfStockOf(b.id) > 0 ? 1 : 0) - (shelfStockOf(a.id) > 0 ? 1 : 0);
+    return stockDiff || shelfRankOf(a) - shelfRankOf(b);
+  });
   const start = state.shelfPage * SHELF_PAGE_SIZE;
   return list.slice(start, start + SHELF_PAGE_SIZE);
 }
@@ -3252,6 +3292,7 @@ function shelfItemMarkup(goods) {
 }
 
 function renderShelf() {
+  applyDecorTheme();
   els.shelfTabs.innerHTML = CATEGORIES.map((cat) => {
     const list = goodsOfCategory(cat.name);
     const low = list.filter((goods) => stockOf(goods.id) <= 1).length;
@@ -3272,7 +3313,7 @@ function renderShelf() {
 }
 
 function ensureShelfShows(goods) {
-  const list = goodsOfCategory(goods.cat);
+  const list = displayOrderOf(goods.cat);
   const index = list.findIndex((item) => item.id === goods.id);
   if (index < 0) return;
   const page = Math.floor(index / SHELF_PAGE_SIZE);
@@ -3556,6 +3597,11 @@ function renderAll() {
 /* ---------------- 商店类型与铺面规格 ---------------- */
 function sizeOf() {
   return SHOP_SIZES.find((s) => s.id === state.size) || SHOP_SIZES[1];
+}
+
+/* 铺面越大，能承接的客流越多：摆摊 0.75×，小门面 1×，大门店 1.2×，整层 1.4× */
+function sizeTrafficMult() {
+  return sizeOf().trafficMult ?? 1;
 }
 
 function capOf(goods) {
@@ -5028,6 +5074,41 @@ function renderGrowthPanel() {
     ${gentleSectionHtml()}`;
 }
 
+/* ---------------- 摆台陈列：自定义商品顺序，影响顾客选中概率 ---------------- */
+function renderDisplayPanel() {
+  const sections = CATEGORIES.map((cat) => ({
+    cat,
+    list: displayOrderOf(cat.name).filter((goods) => shelfStockOf(goods.id) > 0),
+  })).filter((section) => section.list.length);
+
+  els.displayPanel.innerHTML = `
+    <section class="strategy-group">
+      <h3>🧺 摆台陈列 <small>越靠前越好卖</small></h3>
+      <p class="strategy-note">顾客先看到前面的商品：最前位购买概率 +12%，最后位 -12%。调整只改变陈列顺序，不动库存；台面售罄的商品自动沉底，不参与排位。</p>
+      ${sections.length ? sections.map(({ cat, list }) => `
+        <div class="display-cat">
+          <h4>${cat.icon} ${cat.name} <small>${list.length} 个在售</small></h4>
+          <div class="display-list">
+            ${list.map((goods, index) => {
+              const factor = shelfPositionFactor(goods);
+              const pct = Math.round((factor - 1) * 100);
+              return `
+                <div class="display-row">
+                  <span class="display-rank">${index + 1}</span>
+                  <b>${goods.name}</b>
+                  <span>台面 ${shelfStockOf(goods.id)} ${goods.unit}</span>
+                  <em class="${pct >= 0 ? "ok" : "bad"}">${pct >= 0 ? "+" : ""}${pct}%</em>
+                  <span class="display-btns">
+                    <button type="button" data-display-move="up" data-gid="${goods.id}" ${index === 0 ? "disabled" : ""} aria-label="前移">↑</button>
+                    <button type="button" data-display-move="down" data-gid="${goods.id}" ${index === list.length - 1 ? "disabled" : ""} aria-label="后移">↓</button>
+                  </span>
+                </div>`;
+            }).join("")}
+          </div>
+        </div>`).join("") : `<p class="strategy-note">台面还没有商品。先到「进货与定价」进货并上架，再来安排陈列。</p>`}
+    </section>`;
+}
+
 /* ---------------- 历史订单：汇总 + 最近流水 ---------------- */
 function renderOrdersPanel() {
   const allOrders = Array.isArray(state.orders) ? state.orders : [];
@@ -5501,6 +5582,7 @@ function backFilteredGoods() {
     if (state.backCat !== "all" && goods.cat !== state.backCat) return false;
     if (query && !goods.name.toLowerCase().includes(query) && !goods.id.toLowerCase().includes(query)) return false;
     if (state.backLowOnly && stockOf(goods.id) > 0) return false;
+    if (state.backOwnedOnly && totalStockOf(goods.id) <= 0) return false;
     return true;
   });
 }
@@ -5544,20 +5626,28 @@ function renderBackstage() {
   const branchView = state.backView === "branch";
   const growthView = state.backView === "growth";
   const ordersView = state.backView === "orders";
-  els.goodsPanel.hidden = decorView || strategyView || staffView || branchView || growthView || ordersView;
+  const displayView = state.backView === "display";
+  els.goodsPanel.hidden = decorView || strategyView || staffView || branchView || growthView || ordersView || displayView;
   els.decorPanel.hidden = !decorView;
   els.strategyPanel.hidden = !strategyView;
   els.staffPanel.hidden = !staffView;
   els.branchPanel.hidden = !branchView;
   els.growthPanel.hidden = !growthView;
   els.ordersPanel.hidden = !ordersView;
+  els.displayPanel.hidden = !displayView;
   els.backViews.querySelectorAll("button").forEach((button) => {
     button.classList.toggle("on", button.dataset.view === state.backView);
   });
+  els.backLowOnly.checked = state.backLowOnly;
+  els.backOwnedOnly.checked = state.backOwnedOnly;
   updateBackViewBadges();
 
   if (decorView) {
     renderDecorPanel(locked);
+    return;
+  }
+  if (displayView) {
+    renderDisplayPanel();
     return;
   }
   if (strategyView) {
@@ -6297,6 +6387,7 @@ function renderMap() {
   }).join("");
 
   const pendingRentMult = (SHOP_SIZES.find((s) => s.id === state.pendingSize) || SHOP_SIZES[1]).rentMult;
+  const pendingTrafficMult = (SHOP_SIZES.find((s) => s.id === state.pendingSize) || SHOP_SIZES[1]).trafficMult ?? 1;
   els.mapMarkers.innerHTML = LOCATIONS.map((loc) => `
     <button type="button" class="map-marker ${loc.id === selected.id ? "on" : ""}"
       data-loc="${loc.id}" style="left:${(loc.x / 10).toFixed(1)}%;top:${(loc.y / 6.4).toFixed(1)}%"
@@ -6308,7 +6399,7 @@ function renderMap() {
   const trafficPct = clamp((selected.traffic / 1.8) * 100, 8, 100);
   const wealthPct = clamp(((selected.wealthMult - 0.5) / 1.25) * 100, 8, 100);
   const competitionPct = clamp(((selected.competition - 0.7) / 0.65) * 100, 8, 100);
-  const base = BASE_TRAFFIC * locationTrafficFactor(selected) * (0.45 + (state.reputation / 5) * 0.85)
+  const base = BASE_TRAFFIC * locationTrafficFactor(selected) * pendingTrafficMult * (0.45 + (state.reputation / 5) * 0.85)
     * (state.weekend ? (selected.weekendTraffic ?? 1.2) : 1);
   const low = Math.max(2, Math.round(base * 0.85));
   const high = Math.max(low + 1, Math.round(base * 1.15));
@@ -7109,6 +7200,7 @@ function saveGame() {
       autoStyle: state.autoStyle,
       orders: (state.orders || []).slice(-MAX_ORDER_HISTORY),
       orderSeq: state.orderSeq || 0,
+      shelfOrder: state.shelfOrder || {},
       servicePaused: state.servicePaused,
       /* 营业中进度 */
       queue: state.queue,
@@ -7309,6 +7401,8 @@ function loadGame() {
   state.orders = Array.isArray(data.orders) ? data.orders.slice(-MAX_ORDER_HISTORY) : [];
   state.orderSeq = Math.max(0, Number(data.orderSeq)
     || (state.orders.length ? state.orders[state.orders.length - 1].id : 0));
+  state.shelfOrder = data.shelfOrder && typeof data.shelfOrder === "object" ? data.shelfOrder : {};
+  state.backOwnedOnly = false;
   state.servicePaused = !!data.servicePaused;
   state.servingCustomer = false;
   state.queue = data.queue || [];
@@ -7752,6 +7846,24 @@ els.backViews.addEventListener("click", (event) => {
   renderBackstage();
 });
 
+els.displayPanel.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-display-move]");
+  if (!button) return;
+  const goods = GOOD_INDEX[button.dataset.gid];
+  if (!goods) return;
+  const order = displayOrderOf(goods.cat).map((item) => item.id);
+  const index = order.indexOf(goods.id);
+  const target = button.dataset.displayMove === "up" ? index - 1 : index + 1;
+  if (index < 0 || target < 0 || target >= order.length) return;
+  [order[index], order[target]] = [order[target], order[index]];
+  state.shelfOrder = { ...(state.shelfOrder || {}), [goods.cat]: order };
+  StallAudio.tap();
+  renderShelf();
+  renderBackstage();
+  if (state.phase === "prep") persistPrep();
+  else saveGame();
+});
+
 els.ordersPanel.addEventListener("click", (event) => {
   const button = event.target.closest("[data-order-range]");
   if (!button) return;
@@ -7891,6 +8003,11 @@ els.backSearch.addEventListener("input", () => {
 
 els.backLowOnly.addEventListener("change", () => {
   state.backLowOnly = els.backLowOnly.checked;
+  renderBackstage();
+});
+
+els.backOwnedOnly.addEventListener("change", () => {
+  state.backOwnedOnly = els.backOwnedOnly.checked;
   renderBackstage();
 });
 

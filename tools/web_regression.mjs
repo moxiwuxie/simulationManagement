@@ -848,7 +848,68 @@ async function main() {
       state.orders = [];
       state.autoStyle = "balanced";
 
-      /* 22. 开局空库存：启动资金全部为现金 */
+      /* 22. 只看有库存筛选、摆台顺序与铺面规格 */
+      state.backCat = "all";
+      state.backQuery = "";
+      state.backLowOnly = false;
+      state.inventory = {};
+      state.backroom = {};
+      state.shipments = [];
+      for (const goods of GOODS) {
+        state.inventory[goods.id] = [];
+        state.backroom[goods.id] = [];
+      }
+      const ownedGoods = GOODS[0];
+      state.inventory[ownedGoods.id] = [{ qty: 3, cost: 100, dayIn: state.day, shelf: 3 }];
+      state.backOwnedOnly = false;
+      const allBackCount = backFilteredGoods().length;
+      state.backOwnedOnly = true;
+      const ownedBack = backFilteredGoods();
+      state.backOwnedOnly = false;
+      checks.ownedFilter = {
+        all: allBackCount,
+        owned: ownedBack.length,
+        only: ownedBack.length === 1 && ownedBack[0].id === ownedGoods.id,
+      };
+
+      const catGoods = GOODS.filter((goods) => goods.cat === ownedGoods.cat).slice(0, 2);
+      state.inventory[catGoods[0].id] = [{ qty: 2, cost: 100, dayIn: state.day, shelf: 3 }];
+      state.inventory[catGoods[1].id] = [{ qty: 2, cost: 100, dayIn: state.day, shelf: 3 }];
+      state.shelfOrder = { [ownedGoods.cat]: [catGoods[1].id, catGoods[0].id] };
+      const orderedDisplay = displayOrderOf(ownedGoods.cat);
+      const frontFactor = shelfPositionFactor(catGoods[1]);
+      const backFactor = shelfPositionFactor(catGoods[0]);
+      state.backView = "display";
+      renderBackstage();
+      checks.displayOrder = {
+        first: orderedDisplay[0].id === catGoods[1].id,
+        frontFactor,
+        backFactor,
+        effect: frontFactor > backFactor,
+        rows: els.displayPanel.querySelectorAll(".display-row").length,
+        hasHint: els.displayPanel.textContent.includes("越靠前越好卖"),
+      };
+      state.shelfOrder = {};
+
+      checks.sizeTraffic = {
+        values: SHOP_SIZES.map((size) => size.trafficMult),
+        ascending: SHOP_SIZES.every((size, index) => index === 0 || size.trafficMult >= SHOP_SIZES[index - 1].trafficMult),
+        stall: (() => { state.size = "stall"; return sizeTrafficMult(); })(),
+        floor: (() => { state.size = "floor"; return sizeTrafficMult(); })(),
+      };
+      renderShelf();
+      const floorStyle = els.storeScene.dataset.size;
+      state.size = "stall";
+      renderShelf();
+      const stallStyle = els.storeScene.dataset.size;
+      checks.sizeStyle = {
+        floor: floorStyle,
+        stall: stallStyle,
+        distinct: floorStyle === "floor" && stallStyle === "stall",
+      };
+      state.size = "small";
+
+      /* 23. 开局空库存：启动资金全部为现金 */
       state.cash = 200000;
       state.inventory = {};
       state.backroom = {};
@@ -862,8 +923,7 @@ async function main() {
         pricesSet: GOODS.every((goods) => state.prices[goods.id] === goods.base),
       };
 
-      /* 23. 选址确认即时扣首日租金，且不再默认配货 */
-      state.mapMode = "start";
+      /* 23. 选址确认即时扣首日租金，且不再默认配货 */      state.mapMode = "start";
       state.shopType = "fruit";
       state.pendingSize = "stall";
       state.pendingLoc = LOCATIONS[0];
@@ -955,6 +1015,10 @@ async function main() {
   check("历史订单容量上限 300", data.orderCap?.size === data.orderCap?.cap && data.orderCap?.cap === 300, JSON.stringify(data.orderCap));
   check("托管策略与订单写入存档", data.orderPersist?.style === "strict" && data.orderPersist?.capped && data.orderPersist?.orders === 300, JSON.stringify(data.orderPersist));
   check("开局启动资金全为现金且无默认库存", data.emptyStart?.cash === 200000 && data.emptyStart?.inventoryEmpty && data.emptyStart?.backroomEmpty && data.emptyStart?.pricesSet, JSON.stringify(data.emptyStart));
+  check("只看有库存商品筛选生效", data.ownedFilter?.owned === 1 && data.ownedFilter?.only && data.ownedFilter?.all > data.ownedFilter?.owned, JSON.stringify(data.ownedFilter));
+  check("摆台顺序决定陈列位与售卖加成", data.displayOrder?.first && data.displayOrder?.effect && data.displayOrder?.rows === 2 && data.displayOrder?.hasHint && data.displayOrder?.frontFactor > data.displayOrder?.backFactor, JSON.stringify(data.displayOrder));
+  check("铺面越大客流系数越高", data.sizeTraffic?.ascending && data.sizeTraffic?.stall === 0.75 && data.sizeTraffic?.floor === 1.4, JSON.stringify(data.sizeTraffic));
+  check("铺面规格切换店面样式", data.sizeStyle?.distinct && data.sizeStyle?.floor === "floor" && data.sizeStyle?.stall === "stall", JSON.stringify(data.sizeStyle));
   check("选址确认即时扣首日租金且不配货", data.openingCharge?.dayRent === data.openingCharge?.rent && data.openingCharge?.paidDay === 1 && data.openingCharge?.charged && data.openingCharge?.inventoryEmpty, JSON.stringify(data.openingCharge));
 
   const layouts = {};
