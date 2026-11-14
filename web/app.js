@@ -7798,9 +7798,27 @@ function readUsers() {
 function writeUsers(users) {
   try {
     localStorage.setItem(USER_KEY, JSON.stringify(users));
+    return true;
   } catch (err) {
-    /* 隐私模式下静默失败 */
+    /* 无痕模式 / 沙箱预览会禁用本地存储，必须让上层知道写入失败 */
+    return false;
   }
+}
+
+/* 本地存储可用性：无痕模式、站点数据被禁、沙箱 iframe 都会让 localStorage 抛错。
+ * 这种情况下账号写不进去，不能让玩家以为注册成功后再反复登录失败。 */
+let storageOk = null;
+function storageAvailable() {
+  if (storageOk !== null) return storageOk;
+  try {
+    const probe = "shop.probe.v1";
+    localStorage.setItem(probe, "1");
+    localStorage.removeItem(probe);
+    storageOk = true;
+  } catch (err) {
+    storageOk = false;
+  }
+  return storageOk;
 }
 
 /* 轻量密码散列：只用于本机存档，避免明文密码 */
@@ -7826,8 +7844,9 @@ function currentUser() {
 function setSession(id) {
   try {
     localStorage.setItem(SESSION_KEY, id);
+    return localStorage.getItem(SESSION_KEY) === id;
   } catch (err) {
-    /* ignore */
+    return false;
   }
 }
 
@@ -7888,6 +7907,10 @@ function showAuth(profileMode = false) {
     els.authTitle.textContent = profileMode ? "登录以记忆进度" : "店主账号";
     els.authHint.textContent = "登录后经营数据按账号记忆；游客进度只保存在本机，不记入任何账号。";
   }
+  /* 存储被禁用时，任何注册/登录都保存不下来，先在面板上说明原因 */
+  if (!storageAvailable()) {
+    els.authHint.textContent = "当前浏览器未允许本地存储，账号无法保存；请关闭无痕模式、允许站点数据后再注册或登录。";
+  }
 }
 
 function hideAuth() {
@@ -7901,6 +7924,10 @@ function handleAuth(mode) {
     els.authError.textContent = text;
     els.authError.hidden = false;
   };
+  /* 存储不可用时用户名存不下来，注册后刷新就会丢，必须先明确提示 */
+  if (!storageAvailable()) {
+    return fail("当前浏览器未允许本地存储，账号无法保存。请关闭无痕模式、允许站点数据，或用 http:// 地址打开后重试");
+  }
   if (name.length < 2 || name.length > 12) return fail("用户名需 2-12 个字");
   if (pass.length < 4) return fail("密码至少 4 位");
   const id = name.toLowerCase();
@@ -7915,16 +7942,18 @@ function handleAuth(mode) {
       lastLogin: Date.now(),
       totals: {},
     };
-    writeUsers(users);
-    setSession(id);
+    if (!writeUsers(users)) return fail("账号保存失败，请检查浏览器存储权限后重试");
+    if (!setSession(id)) return fail("登录状态写入失败，请允许本站保存数据后重试");
     window.location.reload();
     return;
   }
   const user = users[id];
-  if (!user || user.pass !== hashPass(pass)) return fail("用户名或密码不对");
+  /* 区分“没这个账号”和“密码不对”：数据被清理过时前者更常见 */
+  if (!user) return fail("本机没有这个账号，可能浏览器数据被清理过，请点「注册新账号」");
+  if (user.pass !== hashPass(pass)) return fail("密码不对，请重新输入");
   user.lastLogin = Date.now();
-  writeUsers(users);
-  setSession(id);
+  if (!writeUsers(users)) return fail("账号数据写入失败，请检查浏览器存储权限后重试");
+  if (!setSession(id)) return fail("登录状态写入失败，请允许本站保存数据后重试");
   window.location.reload();
 }
 
@@ -8011,8 +8040,11 @@ const DATA_GEN = "3";
 
 function purgeStaleAccountData() {
   try {
+    if (!storageAvailable()) return false;
     if (localStorage.getItem(DATA_GEN_KEY) === DATA_GEN) return false;
-    const keys = accountStorageKeys();
+    /* 只清玩法进度与会话，保留账号本身：
+     * 旧版把 shop.users.v1 一起删掉，玩家再用原账号登录就会一直提示密码不对。 */
+    const keys = accountStorageKeys().filter((key) => key !== USER_KEY);
     for (const key of keys) localStorage.removeItem(key);
     if (keys.length) bumpSaveEpoch();
     localStorage.setItem(DATA_GEN_KEY, DATA_GEN);

@@ -444,7 +444,8 @@ async function main() {
       checks.purgeGen = {
         purged,
         saveGone: localStorage.getItem(SAVE_KEY_BASE + ":old") === null,
-        usersGone: localStorage.getItem(USER_KEY) === null,
+        /* 换代只清玩法进度，账号必须保留，否则老账号永远登录失败 */
+        usersKept: !!localStorage.getItem(USER_KEY),
         marker: localStorage.getItem(genKey),
         keepsAudio: localStorage.getItem("shop.audio.v1") === "keep",
       };
@@ -464,6 +465,30 @@ async function main() {
       };
       state.suppressSave = true;
       localStorage.setItem(SAVE_EPOCH_KEY, String(epochNow));
+
+      /* 10.8 登录：区分「账号不存在」与「密码错误」，且只在存储可用时才写账号 */
+      const authUsers = readUsers();
+      authUsers.qatester = {
+        id: "qatester", name: "qatester", pass: hashPass("1234"), createdAt: Date.now(), lastLogin: 0, totals: {},
+      };
+      writeUsers(authUsers);
+      els.authName.value = "nobody";
+      els.authPass.value = "1234";
+      handleAuth("login");
+      const missingMsg = els.authError.textContent;
+      els.authName.value = "qatester";
+      els.authPass.value = "wrong";
+      handleAuth("login");
+      const wrongMsg = els.authError.textContent;
+      const afterAuth = readUsers();
+      delete afterAuth.qatester;
+      writeUsers(afterAuth);
+      checks.auth = {
+        storage: storageAvailable() === true,
+        missing: missingMsg.includes("没有这个账号"),
+        wrong: wrongMsg.includes("密码不对"),
+        hash: authUsers.qatester.pass === hashPass("1234"),
+      };
 
       /* 11. 账号档案只反映当前存档，不混入上一局 */
       const users = readUsers();
@@ -1273,7 +1298,8 @@ async function main() {
   check("重置清掉主档与回退档", data.resetClear?.main && data.resetClear?.backup, JSON.stringify(data.resetClear));
   check("后台清理能力覆盖存档与账号且无个人入口", data.wipeAll?.noEntry && data.wipeAll?.hasApi && data.wipeAll?.hasSave && data.wipeAll?.hasBackup && data.wipeAll?.hasUsers && data.wipeAll?.keepsAudio, JSON.stringify(data.wipeAll));
   check("清档代际阻止旧页签回写", data.wipeEpoch?.stopped && data.wipeEpoch?.untouched, JSON.stringify(data.wipeEpoch));
-  check("启动清空存量数据且初始资金 ¥2,000", data.startCash?.configured === 200000 && data.startCash?.baseWealth === 200000 && data.startCash?.marker === "3" && data.purgeGen?.purged && data.purgeGen?.saveGone && data.purgeGen?.usersGone && data.purgeGen?.marker === "3" && data.purgeGen?.keepsAudio, JSON.stringify({ startCash: data.startCash, purgeGen: data.purgeGen }));
+  check("启动换代清进度但保留账号", data.startCash?.configured === 200000 && data.startCash?.baseWealth === 200000 && data.startCash?.marker === "3" && data.purgeGen?.purged && data.purgeGen?.saveGone && data.purgeGen?.usersKept && data.purgeGen?.marker === "3" && data.purgeGen?.keepsAudio, JSON.stringify({ startCash: data.startCash, purgeGen: data.purgeGen }));
+  check("登录区分账号不存在与密码错误", data.auth?.storage && data.auth?.missing && data.auth?.wrong && data.auth?.hash, JSON.stringify(data.auth));
   check("店名自定义与启动资金展示", data.brand?.sign === "测试小铺" && String(data.brand?.title || "").includes("测试小铺") && /¥?2,000/.test(data.brand?.cashText || "") && data.brand?.namePlaceholder === "阿福蔬果", JSON.stringify(data.brand));
   check("新开局口碑初始化", data.reputationInit?.reputation === 3.2 && data.reputationInit?.ratings === 0 && data.reputationInit?.name === "" && data.newRun?.reputation === 3.2, JSON.stringify({ reputationInit: data.reputationInit, newRun: data.newRun }));
   check("菜品三级解锁门槛", data.goodsTiers?.tiers?.[1] > 0 && data.goodsTiers?.tiers?.[2] > 0 && data.goodsTiers?.tiers?.[3] > 0 && data.goodsTiers?.lockedNow && data.goodsTiers?.blocked && data.goodsTiers?.unlockedAfterProgress, JSON.stringify(data.goodsTiers));
