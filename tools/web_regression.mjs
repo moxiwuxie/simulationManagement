@@ -457,6 +457,21 @@ async function main() {
       };
       localStorage.removeItem("shop.audio.v1");
 
+      /* 10.7 清档代际：旧页签不得把已清空的进度写回来 */
+      state.booted = true;
+      state.location = LOCATIONS[0];
+      const epochNow = Number(localStorage.getItem(SAVE_EPOCH_KEY)) || 0;
+      localStorage.setItem(SAVE_EPOCH_KEY, String(epochNow + 1));
+      const saveBefore = localStorage.getItem(saveKey());
+      state.suppressSave = false;
+      saveGame();
+      checks.wipeEpoch = {
+        stopped: state.suppressSave === true,
+        untouched: localStorage.getItem(saveKey()) === saveBefore,
+      };
+      state.suppressSave = true;
+      localStorage.setItem(SAVE_EPOCH_KEY, String(epochNow));
+
       /* 11. 账号档案只反映当前存档，不混入上一局 */
       const users = readUsers();
       users.tester = {
@@ -1128,7 +1143,8 @@ async function main() {
   check("账号档缺失不回退游客档", data.isolation?.namespace && data.isolation?.accountLoaded === false && data.isolation?.dayAfterSwitch === data.isolation?.dayBeforeSwitch && data.isolation?.guestDay === 77, JSON.stringify(data.isolation));
   check("重置清掉主档与回退档", data.resetClear?.main && data.resetClear?.backup, JSON.stringify(data.resetClear));
   check("后台清理能力覆盖存档与账号且无个人入口", data.wipeAll?.noEntry && data.wipeAll?.hasApi && data.wipeAll?.hasSave && data.wipeAll?.hasBackup && data.wipeAll?.hasUsers && data.wipeAll?.keepsAudio, JSON.stringify(data.wipeAll));
-  check("启动清空存量数据且初始资金 ¥2,000", data.startCash?.configured === 200000 && data.startCash?.baseWealth === 200000 && data.startCash?.marker === "2" && data.purgeGen?.purged && data.purgeGen?.saveGone && data.purgeGen?.usersGone && data.purgeGen?.marker === "2" && data.purgeGen?.keepsAudio, JSON.stringify({ startCash: data.startCash, purgeGen: data.purgeGen }));
+  check("清档代际阻止旧页签回写", data.wipeEpoch?.stopped && data.wipeEpoch?.untouched, JSON.stringify(data.wipeEpoch));
+  check("启动清空存量数据且初始资金 ¥2,000", data.startCash?.configured === 200000 && data.startCash?.baseWealth === 200000 && data.startCash?.marker === "3" && data.purgeGen?.purged && data.purgeGen?.saveGone && data.purgeGen?.usersGone && data.purgeGen?.marker === "3" && data.purgeGen?.keepsAudio, JSON.stringify({ startCash: data.startCash, purgeGen: data.purgeGen }));
   check("店名自定义与启动资金展示", data.brand?.sign === "测试小铺" && String(data.brand?.title || "").includes("测试小铺") && /¥?2,000/.test(data.brand?.cashText || "") && data.brand?.namePlaceholder === "阿福蔬果", JSON.stringify(data.brand));
   check("新开局口碑初始化", data.reputationInit?.reputation === 3.2 && data.reputationInit?.ratings === 0 && data.reputationInit?.name === "" && data.newRun?.reputation === 3.2, JSON.stringify({ reputationInit: data.reputationInit, newRun: data.newRun }));
   check("菜品三级解锁门槛", data.goodsTiers?.tiers?.[1] > 0 && data.goodsTiers?.tiers?.[2] > 0 && data.goodsTiers?.tiers?.[3] > 0 && data.goodsTiers?.lockedNow && data.goodsTiers?.blocked && data.goodsTiers?.unlockedAfterProgress, JSON.stringify(data.goodsTiers));

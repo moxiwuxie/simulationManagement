@@ -7162,6 +7162,10 @@ function seedInitialStock() {
 const SAVE_KEY_BASE = "shop.sim.save.v1";
 const USER_KEY = "shop.users.v1";
 const SESSION_KEY = "shop.session.v1";
+/* 存档代际：清档时递增。其他仍开着的页签发现代际不一致后停止回写，
+ * 避免旧标签页在关页前把刚清掉的进度重新写回 localStorage。 */
+const SAVE_EPOCH_KEY = "shop.saveEpoch.v1";
+let saveEpoch = 0;
 let saveWarned = false;
 /* 每天第一次保存时留一份上一版存档，主档损坏可回退 */
 let saveBackupDay = 0;
@@ -7172,9 +7176,31 @@ function saveKey() {
   return state.userId ? `${SAVE_KEY_BASE}:${state.userId}` : SAVE_KEY_BASE;
 }
 
+function currentSaveEpoch() {
+  try {
+    return Number(localStorage.getItem(SAVE_EPOCH_KEY)) || 0;
+  } catch (err) {
+    return saveEpoch;
+  }
+}
+
+function bumpSaveEpoch() {
+  saveEpoch = currentSaveEpoch() + 1;
+  try {
+    localStorage.setItem(SAVE_EPOCH_KEY, String(saveEpoch));
+  } catch (err) {
+    /* 隐私模式下忽略 */
+  }
+}
+
 function saveGame() {
   if (state.suppressSave) return;
   if (!state.booted || !state.location) return;
+  /* 本页签读档后若有人清过档，直接停写，不再复活旧进度 */
+  if (currentSaveEpoch() !== saveEpoch) {
+    state.suppressSave = true;
+    return;
+  }
   let data = null;
   try {
     data = {
@@ -7579,6 +7605,7 @@ function clearCurrentSave() {
 
 function resetGame() {
   state.suppressSave = true;
+  bumpSaveEpoch();
   try {
     clearCurrentSave();
   } catch (err) {
@@ -7762,6 +7789,7 @@ function wipeAllAccountData() {
   if (!window.confirm("确定清空本机所有账号与存档？所有账号、店铺、分店和历史都会被删除。")) return;
   if (!window.confirm("再次确认：此操作不可恢复，清空后需要重新注册账号。")) return;
   state.suppressSave = true;
+  bumpSaveEpoch();
   try {
     for (const key of accountStorageKeys()) localStorage.removeItem(key);
     saveBackupKey = "";
@@ -7772,18 +7800,49 @@ function wipeAllAccountData() {
   window.location.reload();
 }
 
+/* 一键清档：访问 ?wipe=1 清空本机全部账号、存档与档案统计，再回到干净地址。
+ * 用于换机、演示或彻底重置，解决旧浏览器里残留玩法进度的问题。 */
+function wipeByQuery() {
+  let params = null;
+  try {
+    params = new URLSearchParams(window.location.search);
+  } catch (err) {
+    return false;
+  }
+  if (params.get("wipe") !== "1") return false;
+  state.suppressSave = true;
+  bumpSaveEpoch();
+  try {
+    for (const key of accountStorageKeys()) localStorage.removeItem(key);
+    localStorage.setItem(DATA_GEN_KEY, DATA_GEN);
+    saveBackupKey = "";
+    saveBackupDay = 0;
+  } catch (err) {
+    /* ignore */
+  }
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("wipe");
+    window.location.replace(url.toString());
+  } catch (err) {
+    window.location.reload();
+  }
+  return true;
+}
+
 /* 后台运维入口：仅控制台/运维脚本可用，界面不向个人用户暴露 */
-window.shopAdmin = { accountStorageKeys, wipeAllAccountData };
+window.shopAdmin = { accountStorageKeys, wipeAllAccountData, wipeByQuery };
 
 /* 数据换代：启动时清一次历史遗留的账号、会话与存档，之后用标记避免重复清理 */
 const DATA_GEN_KEY = "shop.dataGen.v1";
-const DATA_GEN = "2";
+const DATA_GEN = "3";
 
 function purgeStaleAccountData() {
   try {
     if (localStorage.getItem(DATA_GEN_KEY) === DATA_GEN) return false;
     const keys = accountStorageKeys();
     for (const key of keys) localStorage.removeItem(key);
+    if (keys.length) bumpSaveEpoch();
     localStorage.setItem(DATA_GEN_KEY, DATA_GEN);
     return keys.length > 0;
   } catch (err) {
@@ -8375,8 +8434,10 @@ document.addEventListener("keydown", (event) => {
   else if (!els.backstage.hidden) closeBackstage();
 });
 
-/* 先清历史存量数据，再恢复账号会话，最后按账号命名空间读档 */
-const purgedStaleData = purgeStaleAccountData();
+/* 先处理 ?wipe=1 一键清档，再清历史存量数据，恢复账号会话，最后按账号命名空间读档 */
+const wipedByQuery = wipeByQuery();
+const purgedStaleData = wipedByQuery ? false : purgeStaleAccountData();
+saveEpoch = currentSaveEpoch();
 const sessionUser = currentUser();
 if (sessionUser) {
   state.userId = sessionUser.id;
